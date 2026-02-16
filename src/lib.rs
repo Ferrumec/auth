@@ -3,5 +3,6 @@ mod config;
 mod db;
 mod handlers;
 mod models;
+mod passwordless;
 
-pub use config::AuthModule;
+pub use config::{AuthModule, SetupError};

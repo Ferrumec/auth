@@ -12,7 +12,6 @@ pub struct LoginRequest {
     pub password: String,
 }
 
-
 #[derive(Debug, Deserialize)]
 pub struct RefreshRequest {
     pub refresh_token: String,
@@ -27,7 +26,6 @@ pub struct LogoutRequest {
 pub struct LoginResponse {
     pub access_token: String,
     pub refresh_token: String,
-    pub token_type: String,
     pub expires_in: u64,
 }
 
@@ -46,7 +44,6 @@ pub struct LogoutResponse {
 
 #[derive(Debug, Serialize)]
 pub struct ProtectedResponse {
-    pub username: String,
     pub user_id: String,
     pub message: String,
 }

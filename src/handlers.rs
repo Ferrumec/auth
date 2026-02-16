@@ -9,8 +9,9 @@ use actix_web::cookie::Cookie;
 use actix_web::{HttpResponse, Responder, web};
 use base64::{Engine as _, engine::general_purpose};
 use chrono::Utc;
-use libsigners::Claims;
+use libsigners::{Claims, Signer};
 use rand::{RngCore, rngs::OsRng};
+use serde_json::json;
 use sha2::{Digest, Sha256};
 pub async fn register(
     data: web::Data<auth2::AppState>,
@@ -31,9 +32,12 @@ pub async fn register(
     // Hash password
     let password_hash = match auth2::hash_password(&req.password) {
         Ok(hash) => hash,
-        Err(_) => {
-            return HttpResponse::InternalServerError()
-                .json(ApiResponse::<()>::error("Failed to hash password"));
+        Err(e) => {
+            eprint!(
+                "Error in hashing password: {{password: {}, error: {}}}",
+                req.password, e
+            );
+            return HttpResponse::InternalServerError().finish();
         }
     };
     // Create user in database
@@ -85,55 +89,56 @@ pub async fn login(
     };
 
     // Verify password
-    match auth2::verify_password(&req.password, &user.password_hash) {
+    match bcrypt::verify(&req.password, &user.password_hash) {
         Ok(is_valid) => {
             if !is_valid {
                 return HttpResponse::Unauthorized()
                     .json(ApiResponse::<()>::error("Invalid credentials"));
             }
-
-            // Create JWT token
-            match auth2::create_token_pair(data.signer.clone(), &user.username, &user.id).await {
-                Ok(token) => {
-                    let _ = data
-                        .user_repo
-                        .create_refresh_token(
-                            &user.id,
-                            &token.refresh_token,
-                            data.config.refresh_token_expiry_days,
-                        )
-                        .await;
-
-                    let access_cookie = Cookie::build("access_token", token.access_token.clone())
-                        .path("/")
-                        .http_only(true)
-                        .secure(true)
-                        .domain("localhost")
-                        .finish();
-
-                    HttpResponse::Ok()
-                        .cookie(access_cookie)
-                        .json(ApiResponse::success(
-                            LoginResponse {
-                                access_token: token.access_token,
-                                refresh_token: token.refresh_token,
-                                token_type: "Bearer".to_string(),
-                                expires_in: data.config.access_token_expiry_minutes as u64 * 60, // Convert to seconds
-                            },
-                            "Login successful",
-                        ))
-                }
-                Err(e) => {
-                    println!("JWT creation error: {:?}", e);
-                    HttpResponse::InternalServerError()
-                        .json(ApiResponse::<()>::error("Failed to create token"))
-                }
-            }
         }
         Err(e) => {
             println!("Password verification error: {:?}", e);
-            HttpResponse::InternalServerError()
-                .json(ApiResponse::<()>::error("Failed to verify password"))
+            return HttpResponse::InternalServerError()
+                .json(ApiResponse::<()>::error("Failed to verify password"));
+        }
+    }
+
+    // Create JWT token
+    let token = match auth2::create_access_token(data.signer.clone(), &user.id).await {
+        Ok(token) => token,
+        Err(e) => {
+            println!("JWT creation error: {:?}", e);
+            return HttpResponse::InternalServerError()
+                .json(ApiResponse::<()>::error("Failed to create token"));
+        }
+    };
+    match data
+        .user_repo
+        .create_refresh_token(&user.id, data.config.refresh_token_expiry_days)
+        .await
+    {
+        Ok(rt) => {
+            let access_cookie = Cookie::build("access_token", token.clone())
+                .path("/")
+                .http_only(true)
+                .secure(true)
+                .domain("localhost")
+                .finish();
+
+            HttpResponse::Ok()
+                .cookie(access_cookie)
+                .json(ApiResponse::success(
+                    LoginResponse {
+                        access_token: token,
+                        refresh_token: rt.token,
+                        expires_in: data.config.access_token_expiry_minutes as u64 * 60, // Convert to seconds
+                    },
+                    "Login successful",
+                ))
+        }
+        Err(e) => {
+            eprintln!("Error in creating refresh token: {}", e);
+            HttpResponse::InternalServerError().finish()
         }
     }
 }
@@ -142,7 +147,6 @@ pub async fn protected(claims: web::ReqData<Claims>) -> impl Responder {
     let claims = claims.into_inner();
     HttpResponse::Ok().json(ApiResponse::success(
         ProtectedResponse {
-            username: claims.sub.clone(),
             user_id: claims.user_id.clone(),
             message: "Access granted to protected route".to_string(),
         },
@@ -209,42 +213,36 @@ pub async fn refresh(
     }
 
     // Create new token pair
-    match auth2::create_token_pair(data.signer.clone(), &user.username, &user.id).await {
-        Ok(token_pair) => {
-            // Store new refresh token in database
-            match data
-                .user_repo
-                .create_refresh_token(
-                    &user.id,
-                    &token_pair.refresh_token,
-                    data.config.refresh_token_expiry_days,
-                )
-                .await
-            {
-                Ok(_) => {
-                    let response = RefreshResponse {
-                        access_token: token_pair.access_token,
-                        refresh_token: token_pair.refresh_token,
-                        token_type: "Bearer".to_string(),
-                        expires_in: data.config.access_token_expiry_minutes as u64 * 60,
-                    };
+    let access = match auth2::create_access_token(data.signer.clone(), &user.id).await {
+        Ok(token_pair) => token_pair,
+        Err(e) => {
+            eprintln!("JWT creation error: {:?}", e);
+            return HttpResponse::InternalServerError()
+                .json(ApiResponse::<()>::error("Failed to create tokens"));
+        }
+    };
+    match data
+        .user_repo
+        .create_refresh_token(&user.id, data.config.refresh_token_expiry_days)
+        .await
+    {
+        Ok(rt) => {
+            let response = RefreshResponse {
+                access_token: access,
+                refresh_token: rt.token,
+                token_type: "Bearer".to_string(),
+                expires_in: data.config.access_token_expiry_minutes as u64 * 60,
+            };
 
-                    HttpResponse::Ok().json(ApiResponse::success(
-                        response,
-                        "Token refreshed successfully",
-                    ))
-                }
-                Err(e) => {
-                    println!("Failed to store new refresh token: {:?}", e);
-                    HttpResponse::InternalServerError()
-                        .json(ApiResponse::<()>::error("Failed to store refresh token"))
-                }
-            }
+            HttpResponse::Ok().json(ApiResponse::success(
+                response,
+                "Token refreshed successfully",
+            ))
         }
         Err(e) => {
-            println!("JWT creation error: {:?}", e);
+            println!("Failed to store new refresh token: {:?}", e);
             HttpResponse::InternalServerError()
-                .json(ApiResponse::<()>::error("Failed to create tokens"))
+                .json(ApiResponse::<()>::error("Failed to store refresh token"))
         }
     }
 }
@@ -296,7 +294,7 @@ pub async fn change_password(
         Err(_) => return HttpResponse::Unauthorized().finish(),
     };
 
-    let valid = auth2::verify_password(&req.current_password, &user.password_hash).unwrap_or(false);
+    let valid = bcrypt::verify(&req.current_password, &user.password_hash).unwrap_or(false);
 
     if !valid {
         return HttpResponse::Unauthorized()
@@ -384,4 +382,24 @@ fn generate_reset_token() -> (String, String) {
     let token_hash = format!("{:x}", hasher.finalize());
 
     (token, token_hash)
+}
+
+pub async fn admin_login(
+    data: web::Data<auth2::AppState>,
+    req: web::Json<LoginRequest>,
+) -> impl Responder {
+    // Validate input
+    if req.username.is_empty() || req.password.is_empty() {
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+            "Username and password are required",
+        ));
+    }
+
+    // Validate admin username and password
+    if !(req.username == data.config.admin_user && req.password == data.config.admin_pass) {
+        return HttpResponse::Unauthorized().finish();
+    }
+
+    let claims = Claims::for_admin(data.config.admin_user.clone());
+    HttpResponse::Ok().json(json!({"token":data.signer.sign(&claims).unwrap()}))
 }

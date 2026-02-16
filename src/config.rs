@@ -1,16 +1,21 @@
-use crate::{auth2::AppState, handlers};
+use crate::{auth2::AppState, handlers, passwordless::config};
 use actix_web::web::{self, ServiceConfig};
 use auth_middleware::Auth;
 use sqlx::{Error, sqlite::SqlitePoolOptions};
-use std::env;
+use std::env::{self, VarError};
 
 #[derive(Clone)]
 pub struct AuthModule {
     state: web::Data<AppState>,
 }
 
+pub enum SetupError {
+    Db(Error),
+    Var(VarError),
+}
+
 impl AuthModule {
-    pub async fn new() -> Result<Self, Error> {
+    pub async fn new() -> Result<Self, SetupError> {
         // Database connection
         let database_url =
             env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:auth.db?mode=rwc".to_string());
@@ -18,15 +23,10 @@ impl AuthModule {
         let pool = SqlitePoolOptions::new()
             .max_connections(5)
             .connect(&database_url)
-            .await?;
-        let app_state = match AppState::new(pool) {
-            Ok(r) => r,
-            Err(e) => {
-                eprintln!("Error in initializing auth module: {}", e);
-                panic!()
-            }
-        };
-        app_state.user_repo.init().await?;
+            .await
+            .map_err(SetupError::Db)?;
+        let app_state = AppState::new(pool).map_err(SetupError::Var)?;
+        let _ = app_state.user_repo.init().await.map_err(SetupError::Db);
         Ok(Self {
             state: web::Data::new(app_state),
         })
@@ -48,7 +48,8 @@ impl AuthModule {
                         .route(
                             "/confirm_password_reset",
                             web::post().to(handlers::confirm_password_reset),
-                        ),
+                        )
+                        .route("/admin/login", web::post().to(handlers::admin_login)),
                 )
                 // 🔐 PROTECTED ROUTES
                 .service(
@@ -59,7 +60,8 @@ impl AuthModule {
                             "/change_password",
                             web::post().to(handlers::change_password),
                         ),
-                ),
+                )
+                .service(web::scope("/passwordless").configure(config)),
         );
     }
 }

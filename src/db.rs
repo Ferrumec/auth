@@ -1,7 +1,12 @@
+use std::fmt::Display;
+
+use anyhow::Error;
 use serde::{Deserialize, Serialize};
-use sqlx::{Error, FromRow, Row, SqlitePool, sqlite::SqliteRow};
+use sqlx::{FromRow, Row, SqlitePool, sqlite::SqliteRow};
 use thiserror::Error;
 use uuid::Uuid;
+
+use crate::auth2::{TokenPair, create_access_token, random_token};
 
 #[derive(Debug, Error)]
 pub enum DbError {
@@ -19,6 +24,20 @@ pub enum DbError {
 
     #[error("Database error")]
     DatabaseError,
+}
+
+#[derive(Debug, Error)]
+pub enum TokenPairError {
+    Access(Error),
+    Refresh(DbError),
+}
+impl Display for TokenPairError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TokenPairError::Access(error) => write!(f, "{}", error),
+            TokenPairError::Refresh(db_error) => write!(f, "{}", db_error),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,7 +90,7 @@ impl UserRepository {
         Self { pool }
     }
 
-    pub async fn init(&self) -> Result<(), Error> {
+    pub async fn init(&self) -> Result<(), sqlx::Error> {
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS users (
@@ -186,9 +205,9 @@ impl UserRepository {
     pub async fn create_refresh_token(
         &self,
         user_id: &str,
-        token: &str,
         expires_in_days: i64,
     ) -> Result<RefreshToken, DbError> {
+        let token = random_token();
         let id = Uuid::new_v4().to_string();
         let expires_at = chrono::Utc::now() + chrono::Duration::days(expires_in_days);
         let created_at = chrono::Utc::now();
@@ -201,7 +220,7 @@ impl UserRepository {
         )
         .bind(&id)
         .bind(user_id)
-        .bind(token)
+        .bind(&token)
         .bind(expires_at)
         .bind(created_at)
         .execute(&self.pool)
@@ -249,25 +268,6 @@ impl UserRepository {
         }
     }
 
-    pub async fn revoke_all_user_tokens(&self, user_id: &str) -> Result<(), DbError> {
-        sqlx::query("UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = ?")
-            .bind(user_id)
-            .execute(&self.pool)
-            .await?;
-
-        Ok(())
-    }
-
-    pub async fn cleanup_expired_tokens(&self) -> Result<u64, DbError> {
-        let now = chrono::Utc::now();
-        let result =
-            sqlx::query("DELETE FROM refresh_tokens WHERE expires_at < ? OR revoked = TRUE")
-                .bind(now)
-                .execute(&self.pool)
-                .await?;
-
-        Ok(result.rows_affected())
-    }
     pub async fn update_password(&self, user_id: &str, password_hash: &str) -> Result<(), DbError> {
         sqlx::query(r#"UPDATE users SET password_hash = $1 WHERE id = $2"#)
             .bind(password_hash)
@@ -323,5 +323,23 @@ impl UserRepository {
         .fetch_one(&self.pool)
         .await
         .map_err(|_| DbError::RefreshTokenNotFound)
+    }
+
+    pub async fn create_token_pair(
+        &self,
+        signer: libsigners::HS256Signer,
+        user_id: &str,
+    ) -> Result<TokenPair, TokenPairError> {
+        let access = create_access_token(signer, user_id)
+            .await
+            .map_err(TokenPairError::Access)?;
+        let rt = self
+            .create_refresh_token(user_id, 1)
+            .await
+            .map_err(TokenPairError::Refresh)?;
+        Ok(TokenPair {
+            access_token: access,
+            refresh_token: rt.token,
+        })
     }
 }
