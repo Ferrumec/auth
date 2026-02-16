@@ -1,4 +1,8 @@
-use crate::{auth2::AppState, handlers, passwordless::config};
+use crate::{
+    auth2::AppState,
+    handlers,
+    passwordless::{config, create_tables},
+};
 use actix_web::web::{self, ServiceConfig};
 use auth_middleware::Auth;
 use sqlx::{Error, sqlite::SqlitePoolOptions};
@@ -25,7 +29,8 @@ impl AuthModule {
             .connect(&database_url)
             .await
             .map_err(SetupError::Db)?;
-        let app_state = AppState::new(pool).map_err(SetupError::Var)?;
+        let app_state = AppState::new(pool.clone()).map_err(SetupError::Var)?;
+        let _ = create_tables(&pool).await.map_err(SetupError::Db);
         let _ = app_state.user_repo.init().await.map_err(SetupError::Db);
         Ok(Self {
             state: web::Data::new(app_state),

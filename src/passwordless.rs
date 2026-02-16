@@ -7,7 +7,7 @@ use actix_web::{
 use libsigners::Claims;
 use moka::future::Cache;
 use serde::Deserialize;
-use sqlx::query_scalar;
+use sqlx::{query, query_scalar};
 use uuid::Uuid;
 
 use crate::{
@@ -23,12 +23,12 @@ pub struct Caches {
 impl Caches {
     pub fn new() -> Self {
         let tokens = Cache::builder()
-            .time_to_live(Duration::from_mins(2))
+            .time_to_live(Duration::from_secs(120))
             .build();
         let accounts = Cache::builder()
-            .time_to_live(Duration::from_mins(2))
+            .time_to_live(Duration::from_secs(120))
             .build();
-        return Self { tokens, accounts };
+        Self { tokens, accounts }
     }
 }
 
@@ -37,14 +37,36 @@ struct AddEmailReq {
     email: String,
 }
 
+pub async fn create_tables(db: &sqlx::Pool<sqlx::Sqlite>) -> Result<(), sqlx::Error> {
+    // Create the emails table if it doesn't exist
+    query(
+        "CREATE TABLE IF NOT EXISTS emails (
+            user TEXT NOT NULL,
+            email TEXT NOT NULL UNIQUE,
+            PRIMARY KEY (user, email)
+        )",
+    )
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
+/// Generate a random token and keep it in the tokens cache with the email as the key
+/// Then email the token to the address
+async fn release_token(email: String, tokens: &Cache<String, String>) {
+    let token = random_token();
+    tokens.insert(token.clone(), email.clone()).await;
+    send_email(email, token);
+}
+
 fn send_email(addr: String, text: String) {
     println!("Email sent:{{ addr: {}, message: {} }}", addr, text)
 }
 
-#[post("/register")]
+#[post("/register/start")]
 async fn create(data: web::Data<AppState>, json: web::Json<AddEmailReq>) -> impl Responder {
-    // Check if the email already added
-    let email: Option<String> = match query_scalar("SELECT address FROM emails WHERE address = ?")
+    // Check if the email already exists
+    let email: Option<String> = match query_scalar("SELECT email FROM emails WHERE email = ?")
         .bind(json.email.clone())
         .fetch_optional(&data.db)
         .await
@@ -55,18 +77,80 @@ async fn create(data: web::Data<AppState>, json: web::Json<AddEmailReq>) -> impl
             return HttpResponse::InternalServerError().finish();
         }
     };
-    // Return error email used if email exists
-    match email {
-        Some(_) => return HttpResponse::NotAcceptable().body("email already used"),
-        None => (),
+    if email.is_some() {
+        return HttpResponse::NotAcceptable().body("email already used");
     }
-    // Else, add this email to pending additions cache
+
+    // Create a pending account and return the user_id so the client can request a challenge.
     let user_id = Uuid::new_v4().to_string();
     data.caches
         .accounts
-        .insert(json.email.clone(), json.email.clone())
+        .insert(json.email.clone(), user_id.clone())
         .await;
-    HttpResponse::Created().finish()
+
+    release_token(json.email.clone(), &data.caches.tokens).await;
+    HttpResponse::Created().body(user_id)
+}
+
+#[get("/register/confirm_link/{link}")]
+async fn confirm_registration(
+    data: web::Data<AppState>,
+    token: web::Path<String>,
+) -> impl Responder {
+    let token = token.into_inner();
+
+    // Check the email for this token and invalidate the token on success
+    let email = match data.caches.tokens.remove(&token).await {
+        None => return HttpResponse::Unauthorized().body("invalid or expired token"),
+        Some(e) => e,
+    };
+
+    // Check for a pending account (email -> user_id). If present, persist it.
+    let user_id: String = match data.caches.accounts.remove(&email).await {
+        Some(pending_user_id) => {
+            // Ensure the user exists
+            let id = match data
+                .user_repo
+                .create_user(&pending_user_id, &random_token())
+                .await
+            {
+                Ok(u) => u.id,
+                Err(e) => {
+                    eprintln!("Error in creating user: {}", e);
+                    return HttpResponse::InternalServerError().finish();
+                }
+            };
+            // Attach email to user
+            if let Err(e) = query("INSERT INTO emails (user, email) VALUES (?, ?)")
+                .bind(pending_user_id.clone())
+                .bind(email.clone())
+                .execute(&data.db)
+                .await
+            {
+                eprintln!("Error inserting email: {}", e);
+                return HttpResponse::InternalServerError().finish();
+            }
+            id
+        }
+        None => return HttpResponse::BadRequest().body("user id not found"),
+    };
+
+    let tp = match data
+        .user_repo
+        .create_token_pair(data.signer.clone(), &user_id)
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Error in creating token pair: {}", e);
+            return HttpResponse::InternalServerError().finish();
+        }
+    };
+    HttpResponse::Ok().json(LoginResponse {
+        access_token: tp.access_token,
+        refresh_token: tp.refresh_token,
+        expires_in: 300,
+    })
 }
 
 #[post("/add_email")]
@@ -75,9 +159,9 @@ async fn add(
     claims: web::ReqData<Claims>,
     json: web::Json<AddEmailReq>,
 ) -> impl Responder {
-    // Check if email already added
-    let email: Option<String> = match query_scalar("SELECT address FROM emails WHERE user = ?")
-        .bind(claims.as_user.clone())
+    // Ensure this email is not already used by any account.
+    let email: Option<String> = match query_scalar("SELECT email FROM emails WHERE email = ?")
+        .bind(json.email.clone())
         .fetch_optional(&data.db)
         .await
     {
@@ -87,22 +171,20 @@ async fn add(
             return HttpResponse::InternalServerError().finish();
         }
     };
-
-    // Return error, email used if email exists
-    match email {
-        Some(e) => {
-            if e == json.email {
-                return HttpResponse::NotAcceptable().body("email already used");
-            }
-        }
-        None => (),
+    if email.is_some() {
+        return HttpResponse::NotAcceptable().body("email already used");
     }
 
+    // Store pending email -> user_id for confirmation.
+    data.caches
+        .accounts
+        .insert(json.email.clone(), claims.as_user.clone())
+        .await;
     HttpResponse::Created().finish()
 }
 
-#[get("/challange/{user_id}")]
-async fn challange(data: web::Data<AppState>, user_id: web::Path<String>) -> impl Responder {
+#[get("/challenge/{user_id}")]
+async fn challenge(data: web::Data<AppState>, user_id: web::Path<String>) -> impl Responder {
     let user_id = user_id.into_inner();
     // Check the emails table for email with this user_id
     let email: Option<String> = match query_scalar("SELECT email FROM emails WHERE user = ?")
@@ -116,18 +198,17 @@ async fn challange(data: web::Data<AppState>, user_id: web::Path<String>) -> imp
             return HttpResponse::InternalServerError().finish();
         }
     };
-    // If a match is not found, return error, invalid user_id
     let email = match email {
         Some(e) => e,
         None => return HttpResponse::BadRequest().body("invalid user id"),
     };
+
     // Generate a random token and keep it in the pending tokens cache with the email as the key
     let token = random_token();
     data.caches
         .tokens
         .insert(token.clone(), email.clone())
         .await;
-    // Email the token to the email address
     send_email(email, token);
     HttpResponse::Created().finish()
 }
@@ -136,23 +217,38 @@ async fn challange(data: web::Data<AppState>, user_id: web::Path<String>) -> imp
 async fn confirm(data: web::Data<AppState>, token: web::Path<String>) -> impl Responder {
     let token = token.into_inner();
 
-    // Check the email for this token from the pending tokens cache
-    // If no email found, return error, invalid or expired token
-    let email = match data.caches.tokens.get(&token).await {
+    // Check the email for this token and invalidate the token on success
+    let email = match data.caches.tokens.remove(&token).await {
         None => return HttpResponse::Unauthorized().body("invalid or expired token"),
         Some(e) => e,
     };
-    // Check the temporary accounts for the user_id associated with this email
+
+    // Check for a pending account (email -> user_id). If present, persist it.
     let user_id: String = match data.caches.accounts.remove(&email).await {
-        Some(r) => match data.user_repo.create_user(&r, &random_token()).await {
-            Ok(_) => r,
-            Err(e) => {
+        Some(pending_user_id) => {
+            // Ensure the user exists
+            if let Err(e) = data
+                .user_repo
+                .create_user(&pending_user_id, &random_token())
+                .await
+            {
                 eprintln!("Error in creating user: {}", e);
                 return HttpResponse::InternalServerError().finish();
             }
-        },
+            // Attach email to user
+            if let Err(e) = query("INSERT INTO emails (user, email) VALUES (?, ?)")
+                .bind(pending_user_id.clone())
+                .bind(email.clone())
+                .execute(&data.db)
+                .await
+            {
+                eprintln!("Error inserting email: {}", e);
+                return HttpResponse::InternalServerError().finish();
+            }
+            pending_user_id
+        }
         None => match query_scalar::<_, String>("SELECT user FROM emails WHERE email = ?")
-            .bind(email)
+            .bind(email.clone())
             .fetch_optional(&data.db)
             .await
         {
@@ -166,11 +262,7 @@ async fn confirm(data: web::Data<AppState>, token: web::Path<String>) -> impl Re
             }
         },
     };
-    // If found, create a permanent account with the user_id as username and random password
 
-    // If no temporary account found, check the permanent accounts for the user_id associated with this email
-    // in all cases so far, you should end up with a user_id
-    // create an access token for this user_id
     let tp = match data
         .user_repo
         .create_token_pair(data.signer.clone(), &user_id)
@@ -182,7 +274,6 @@ async fn confirm(data: web::Data<AppState>, token: web::Path<String>) -> impl Re
             return HttpResponse::InternalServerError().finish();
         }
     };
-    // return access token and the user_id
     HttpResponse::Ok().json(LoginResponse {
         access_token: tp.access_token,
         refresh_token: tp.refresh_token,
@@ -194,8 +285,9 @@ pub fn config(cfg: &mut ServiceConfig) {
     cfg.service(
         web::scope("")
             .service(confirm)
-            .service(challange)
+            .service(challenge)
             .service(add)
-            .service(create),
+            .service(create)
+            .service(confirm_registration),
     );
 }
