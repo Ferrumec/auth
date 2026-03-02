@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, Row, SqlitePool, sqlite::SqliteRow};
+use sqlx::{FromRow, Row, SqlitePool, query_scalar, sqlite::SqliteRow};
 use thiserror::Error;
 use uuid::Uuid;
 

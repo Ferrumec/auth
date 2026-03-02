@@ -1,4 +1,4 @@
-use crate::{db::UserRepository, passwordless::Caches};
+use crate::{db::UserRepository, passwdless::PasswdlessService};
 use anyhow::Error;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use libsigners::{Claims, HS256Signer, Signer};
@@ -11,12 +11,12 @@ pub struct AppState {
     pub user_repo: UserRepository,
     pub signer: HS256Signer,
     pub config: Config,
-    pub caches: Caches,
+    pub passwdless_service: PasswdlessService,
     pub db: Pool<Sqlite>,
 }
 
 impl AppState {
-    pub fn new(pool: SqlitePool) -> Result<Self, VarError> {
+    pub fn new(pool: SqlitePool, passwdless_service: PasswdlessService) -> Result<Self, VarError> {
         let secret = match env::var("SECRET") {
             Ok(r) => Ok(r),
             Err(e) => {
@@ -29,7 +29,7 @@ impl AppState {
             user_repo: UserRepository::new(pool.clone()),
             signer: HS256Signer::new(secret),
             config,
-            caches: Caches::new(),
+            passwdless_service,
             db: pool,
         })
     }

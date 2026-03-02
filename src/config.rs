@@ -1,7 +1,6 @@
 use crate::{
-    auth2::AppState,
-    handlers,
-    passwordless::{config, create_tables},
+    auth2::AppState, handlers, passwdless::PasswdlessService, passwordless::config,
+    user_id::username2userid,
 };
 use actix_web::web::{self, ServiceConfig};
 use auth_middleware::Auth;
@@ -18,6 +17,12 @@ pub enum SetupError {
     Var(VarError),
 }
 
+impl From<Error> for SetupError {
+    fn from(value: Error) -> Self {
+        SetupError::Db(value)
+    }
+}
+
 impl AuthModule {
     pub async fn new() -> Result<Self, SetupError> {
         // Database connection
@@ -29,8 +34,8 @@ impl AuthModule {
             .connect(&database_url)
             .await
             .map_err(SetupError::Db)?;
-        let app_state = AppState::new(pool.clone()).map_err(SetupError::Var)?;
-        let _ = create_tables(&pool).await.map_err(SetupError::Db);
+        let passwdless_service = PasswdlessService::new(pool.clone()).await?;
+        let app_state = AppState::new(pool.clone(), passwdless_service).map_err(SetupError::Var)?;
         let _ = app_state.user_repo.init().await.map_err(SetupError::Db);
         Ok(Self {
             state: web::Data::new(app_state),
@@ -40,6 +45,7 @@ impl AuthModule {
         cfg.service(
             web::scope(namespace)
                 .app_data(self.state.clone())
+                .service(username2userid)
                 .service(
                     web::scope("/auth")
                         .route("/register", web::post().to(handlers::register))
