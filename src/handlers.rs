@@ -63,6 +63,15 @@ pub async fn register(
     }
 }
 
+fn access_cookie(token: String) -> Cookie<'static> {
+    Cookie::build("access_token", token.clone())
+        .path("/")
+        .http_only(true)
+        .secure(true)
+        .domain("localhost")
+        .finish()
+}
+
 pub async fn login(
     data: web::Data<auth2::AppState>,
     req: web::Json<LoginRequest>,
@@ -103,41 +112,25 @@ pub async fn login(
         }
     }
 
-    // Create JWT token
-    let token = match auth2::create_access_token(data.signer.clone(), &user.id).await {
-        Ok(token) => token,
-        Err(e) => {
-            println!("JWT creation error: {:?}", e);
-            return HttpResponse::InternalServerError()
-                .json(ApiResponse::<()>::error("Failed to create token"));
-        }
-    };
     match data
         .user_repo
-        .create_refresh_token(&user.id, data.config.refresh_token_expiry_days)
+        .create_token_pair(data.signer.clone(), &user.id)
         .await
     {
-        Ok(rt) => {
-            let access_cookie = Cookie::build("access_token", token.clone())
-                .path("/")
-                .http_only(true)
-                .secure(true)
-                .domain("localhost")
-                .finish();
-
+        Ok(tp) => {
             HttpResponse::Ok()
-                .cookie(access_cookie)
+                .cookie(access_cookie(tp.access_token.clone()))
                 .json(ApiResponse::success(
                     LoginResponse {
-                        access_token: token,
-                        refresh_token: rt.token,
+                        access_token: tp.access_token,
+                        refresh_token: tp.refresh_token,
                         expires_in: data.config.access_token_expiry_minutes as u64 * 60, // Convert to seconds
                     },
                     "Login successful",
                 ))
         }
         Err(e) => {
-            eprintln!("Error in creating refresh token: {}", e);
+            eprintln!("Error in creating token pair: {}", e);
             HttpResponse::InternalServerError().finish()
         }
     }
@@ -213,36 +206,26 @@ pub async fn refresh(
     }
 
     // Create new token pair
-    let access = match auth2::create_access_token(data.signer.clone(), &user.id).await {
-        Ok(token_pair) => token_pair,
-        Err(e) => {
-            eprintln!("JWT creation error: {:?}", e);
-            return HttpResponse::InternalServerError()
-                .json(ApiResponse::<()>::error("Failed to create tokens"));
-        }
-    };
     match data
         .user_repo
-        .create_refresh_token(&user.id, data.config.refresh_token_expiry_days)
+        .create_token_pair(data.signer.clone(), &user.id)
         .await
     {
-        Ok(rt) => {
-            let response = RefreshResponse {
-                access_token: access,
-                refresh_token: rt.token,
-                token_type: "Bearer".to_string(),
-                expires_in: data.config.access_token_expiry_minutes as u64 * 60,
-            };
-
-            HttpResponse::Ok().json(ApiResponse::success(
-                response,
-                "Token refreshed successfully",
-            ))
+        Ok(tp) => {
+            HttpResponse::Ok()
+                .cookie(access_cookie(tp.access_token.clone()))
+                .json(ApiResponse::success(
+                    LoginResponse {
+                        access_token: tp.access_token,
+                        refresh_token: tp.refresh_token,
+                        expires_in: data.config.access_token_expiry_minutes as u64 * 60, // Convert to seconds
+                    },
+                    "Refresh successful",
+                ))
         }
         Err(e) => {
-            println!("Failed to store new refresh token: {:?}", e);
-            HttpResponse::InternalServerError()
-                .json(ApiResponse::<()>::error("Failed to store refresh token"))
+            eprintln!("Error in creating token pair: {}", e);
+            HttpResponse::InternalServerError().finish()
         }
     }
 }

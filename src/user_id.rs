@@ -1,7 +1,4 @@
-use actix_web::{
-    HttpResponse, Responder, get,
-    web::{self, Path},
-};
+use actix_web::{HttpResponse, Responder, get, web};
 
 use crate::auth2::AppState;
 #[get("/user_id/username/{username}")]
