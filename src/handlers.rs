@@ -2,8 +2,7 @@ use crate::auth2;
 use crate::db::DbError;
 use crate::models::{
     ApiResponse, ChangePasswordRequest, LoginRequest, LoginResponse, LogoutRequest, LogoutResponse,
-    PasswordResetConfirmRequest, PasswordResetRequest, ProtectedResponse, RefreshRequest,
-    RefreshResponse, RegisterRequest,
+    PasswordResetConfirmRequest, PasswordResetRequest, ProtectedResponse, RefreshRequest, RegisterRequest,
 };
 use actix_web::cookie::Cookie;
 use actix_web::{HttpResponse, Responder, web};
