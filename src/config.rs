@@ -36,7 +36,6 @@ impl AuthModule {
             .map_err(SetupError::Db)?;
         let passwdless_service = PasswdlessService::new(pool.clone()).await?;
         let app_state = AppState::new(pool.clone(), passwdless_service).map_err(SetupError::Var)?;
-        let _ = app_state.user_repo.init().await.map_err(SetupError::Db);
         Ok(Self {
             state: web::Data::new(app_state),
         })

@@ -4,7 +4,7 @@ use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use libsigners::{Claims, HS256Signer, Signer};
 use rand::RngCore;
 use rand::rngs::OsRng;
-use sqlx::{Pool, Sqlite, SqlitePool};
+use sqlx::SqlitePool;
 use std::env::{self, VarError};
 
 pub struct AppState {
@@ -12,7 +12,6 @@ pub struct AppState {
     pub signer: HS256Signer,
     pub config: Config,
     pub passwdless_service: PasswdlessService,
-    pub db: Pool<Sqlite>,
 }
 
 impl AppState {
@@ -30,7 +29,6 @@ impl AppState {
             signer: HS256Signer::new(secret),
             config,
             passwdless_service,
-            db: pool,
         })
     }
 }
@@ -42,7 +40,6 @@ pub struct TokenPair {
 
 pub struct Config {
     pub access_token_expiry_minutes: i64,
-    pub refresh_token_expiry_days: i64,
     pub admin_pass: String,
     pub admin_user: String,
 }
@@ -66,10 +63,7 @@ impl Config {
                 .unwrap_or_else(|_| "15".to_string())
                 .parse()
                 .unwrap_or(15),
-            refresh_token_expiry_days: env::var("REFRESH_TOKEN_EXPIRY_DAYS")
-                .unwrap_or_else(|_| "7".to_string())
-                .parse()
-                .unwrap_or(7),
+
             admin_user,
             admin_pass,
         })

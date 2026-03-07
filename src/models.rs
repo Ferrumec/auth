@@ -30,14 +30,6 @@ pub struct LoginResponse {
 }
 
 #[derive(Debug, Serialize)]
-pub struct RefreshResponse {
-    pub access_token: String,
-    pub refresh_token: String,
-    pub token_type: String,
-    pub expires_in: u64,
-}
-
-#[derive(Debug, Serialize)]
 pub struct LogoutResponse {
     pub message: String,
 }
