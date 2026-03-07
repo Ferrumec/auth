@@ -4,8 +4,8 @@ use crate::{
 };
 use actix_web::web::{self, ServiceConfig};
 use auth_middleware::Auth;
-use sqlx::{Error, sqlite::SqlitePoolOptions};
-use std::env::{self, VarError};
+use sqlx::{Error, Pool, Sqlite};
+use std::env::VarError;
 
 #[derive(Clone)]
 pub struct AuthModule {
@@ -24,16 +24,7 @@ impl From<Error> for SetupError {
 }
 
 impl AuthModule {
-    pub async fn new() -> Result<Self, SetupError> {
-        // Database connection
-        let database_url =
-            env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:auth.db?mode=rwc".to_string());
-
-        let pool = SqlitePoolOptions::new()
-            .max_connections(5)
-            .connect(&database_url)
-            .await
-            .map_err(SetupError::Db)?;
+    pub async fn new(pool: Pool<Sqlite>) -> Result<Self, SetupError> {
         let passwdless_service = PasswdlessService::new(pool.clone()).await?;
         let app_state = AppState::new(pool.clone(), passwdless_service).map_err(SetupError::Var)?;
         Ok(Self {

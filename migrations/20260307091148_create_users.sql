@@ -5,6 +5,6 @@ CREATE TABLE IF NOT EXISTS users (
                 password_hash TEXT NOT NULL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
+            );
 
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)

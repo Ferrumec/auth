@@ -47,23 +47,8 @@ async fn release_token(email: String, tokens: &Cache<String, String>) {
     send_email(email, token);
 }
 
-pub async fn create_tables(db: &sqlx::Pool<sqlx::Sqlite>) -> Result<(), sqlx::Error> {
-    // Create the emails table if it doesn't exist
-    query(
-        "CREATE TABLE IF NOT EXISTS emails (
-            user TEXT NOT NULL,
-            email TEXT NOT NULL UNIQUE,
-            PRIMARY KEY (user, email)
-        )",
-    )
-    .execute(db)
-    .await?;
-    Ok(())
-}
-
 impl PasswdlessService {
     pub async fn new(db: sqlx::Pool<sqlx::Sqlite>) -> Result<Self, sqlx::Error> {
-        create_tables(&db).await?;
         Ok(Self {
             db,
             caches: Caches::new(),
@@ -72,8 +57,7 @@ impl PasswdlessService {
     pub async fn create(&self, email: String) -> Result<String, PasswdlessError> {
         // Check if the email already exists
         let stored_email: Option<String> =
-            match query_scalar("SELECT email FROM emails WHERE email = ?")
-                .bind(email.clone())
+            match query_scalar!("SELECT email FROM emails WHERE email = ?", email)
                 .fetch_optional(&self.db)
                 .await
             {
@@ -109,11 +93,13 @@ impl PasswdlessService {
         match self.caches.accounts.remove(&email).await {
             Some(pending_user_id) => {
                 // Attach email to user
-                if let Err(e) = query("INSERT INTO emails (user, email) VALUES (?, ?)")
-                    .bind(pending_user_id.clone())
-                    .bind(email.clone())
-                    .execute(&self.db)
-                    .await
+                if let Err(e) = query!(
+                    "INSERT INTO emails (user, email) VALUES (?, ?)",
+                    pending_user_id,
+                    email
+                )
+                .execute(&self.db)
+                .await
                 {
                     eprintln!("Error inserting email: {}", e);
                     return Err(PasswdlessError::DbError);
@@ -127,8 +113,7 @@ impl PasswdlessService {
     pub async fn add(&self, email: String, user_id: String) -> Result<(), PasswdlessError> {
         // Ensure this email is not already used by any account.
         let stored_email: Option<String> =
-            match query_scalar("SELECT email FROM emails WHERE email = ?")
-                .bind(email.clone())
+            match query_scalar!("SELECT email FROM emails WHERE email = ?", email)
                 .fetch_optional(&self.db)
                 .await
             {
@@ -158,17 +143,17 @@ impl PasswdlessService {
 
     pub async fn challenge(&self, user_id: String) -> Result<(), PasswdlessError> {
         // Check the emails table for email with this user_id
-        let email: Option<String> = match query_scalar("SELECT email FROM emails WHERE user = ?")
-            .bind(user_id)
-            .fetch_optional(&self.db)
-            .await
-        {
-            Ok(r) => r,
-            Err(e) => {
-                eprintln!("Error getting email: {}", e);
-                return Err(PasswdlessError::DbError);
-            }
-        };
+        let email: Option<String> =
+            match query_scalar!("SELECT email FROM emails WHERE user = ?", user_id)
+                .fetch_optional(&self.db)
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("Error getting email: {}", e);
+                    return Err(PasswdlessError::DbError);
+                }
+            };
         let email = match email {
             Some(e) => e,
             None => return Err(PasswdlessError::UserNotFound),
