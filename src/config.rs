@@ -56,7 +56,7 @@ impl AuthModule {
                 .service(
                     web::scope("/me")
                         .wrap(Auth)
-                        .route("/protected", web::get().to(handlers::protected))
+                        .route("/account", web::get().to(handlers::protected))
                         .route(
                             "/change_password",
                             web::post().to(handlers::change_password),
