@@ -64,7 +64,7 @@ async fn confirm_registration(
     // Token pair generation
     let tp = match data
         .user_repo
-        .create_token_pair(data.signer.clone(), &id)
+        .create_token_pair(data.signer.clone(), &id, "confirm_registration".to_string())
         .await
     {
         Ok(r) => r,
@@ -121,7 +121,7 @@ async fn confirm(data: web::Data<AppState>, token: web::Path<String>) -> impl Re
 
     let tp = match data
         .user_repo
-        .create_token_pair(data.signer.clone(), &user_id)
+        .create_token_pair(data.signer.clone(), &user_id, "confirm".to_string())
         .await
     {
         Ok(r) => r,

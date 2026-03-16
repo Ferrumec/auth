@@ -2,7 +2,8 @@ use crate::auth2;
 use crate::db::DbError;
 use crate::models::{
     ApiResponse, ChangePasswordRequest, LoginRequest, LoginResponse, LogoutRequest, LogoutResponse,
-    PasswordResetConfirmRequest, PasswordResetRequest, ProtectedResponse, RefreshRequest, RegisterRequest,
+    PasswordResetConfirmRequest, PasswordResetRequest, ProtectedResponse, RefreshRequest,
+    RegisterRequest,
 };
 use actix_web::cookie::Cookie;
 use actix_web::{HttpResponse, Responder, web};
@@ -113,7 +114,7 @@ pub async fn login(
 
     match data
         .user_repo
-        .create_token_pair(data.signer.clone(), &user.id)
+        .create_token_pair(data.signer.clone(), &user.id, "username-login".to_string())
         .await
     {
         Ok(tp) => {
@@ -199,15 +200,18 @@ pub async fn refresh(
 
     // Revoke the old refresh token (optional: you can keep it or revoke it)
     // For better security, revoke the old token (one-time use)
-    if let Err(e) = data.user_repo.revoke_refresh_token(refresh_token).await {
-        println!("Failed to revoke old refresh token: {:?}", e);
-        // Continue anyway - the token will still expire
+    match data.user_repo.revoke_refresh_token(refresh_token).await {
+        Ok(_) => (),
+        Err(e) => {
+            eprintln!("Error in revoking refresh token: {}", e);
+            return HttpResponse::InternalServerError().finish();
+        }
     }
 
     // Create new token pair
     match data
         .user_repo
-        .create_token_pair(data.signer.clone(), &user.id)
+        .create_token_pair(data.signer.clone(), &user.id, db_token.issuerer)
         .await
     {
         Ok(tp) => {
@@ -383,5 +387,8 @@ pub async fn admin_login(
     }
 
     let claims = Claims::for_admin(data.config.admin_user.clone());
-    HttpResponse::Ok().json(json!({"token":data.signer.sign(&claims).unwrap()}))
+    let token = data.signer.sign(&claims).unwrap();
+    HttpResponse::Ok()
+        .cookie(access_cookie(token.clone()))
+        .json(json!({"token":token}))
 }

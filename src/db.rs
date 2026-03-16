@@ -64,6 +64,7 @@ pub struct RefreshToken {
     pub id: String,
     pub user_id: String,
     pub token: String,
+    pub issuerer: String,
     pub expires_at: chrono::DateTime<chrono::Utc>,
     pub revoked: bool,
     pub created_at: chrono::DateTime<chrono::Utc>,
@@ -155,6 +156,7 @@ impl UserRepository {
         &self,
         user_id: &str,
         expires_in_days: i64,
+        issuerer: String,
     ) -> Result<RefreshToken, DbError> {
         let token = random_token();
         let id = Uuid::new_v4().to_string();
@@ -163,13 +165,14 @@ impl UserRepository {
 
         sqlx::query!(
             r#"
-            INSERT INTO refresh_tokens (id, user_id, token, expires_at, revoked, created_at)
-            VALUES (?, ?, ?, ?, FALSE, ?)
+            INSERT INTO refresh_tokens (id, user_id, token, expires_at, issuerer, revoked, created_at)
+            VALUES (?, ?,?, ?, ?, FALSE, ?)
             "#,
             id,
             user_id,
             token,
             expires_at,
+            issuerer,
             created_at
         )
         .execute(&self.pool)
@@ -180,6 +183,7 @@ impl UserRepository {
             user_id: user_id.to_string(),
             token: token.to_string(),
             expires_at,
+            issuerer,
             revoked: false,
             created_at,
         })
@@ -193,6 +197,7 @@ impl UserRepository {
             id as "id!",
             user_id as "user_id!",
             token as "token!",
+            issuerer,
             expires_at as "expires_at!: chrono::DateTime<chrono::Utc>",
             revoked as "revoked!",
             created_at as "created_at!: chrono::DateTime<chrono::Utc>"
@@ -213,18 +218,14 @@ impl UserRepository {
     }
 
     pub async fn revoke_refresh_token(&self, token: &str) -> Result<(), DbError> {
-        let result = sqlx::query!(
+        sqlx::query!(
             "UPDATE refresh_tokens SET revoked = TRUE WHERE token = ?",
             token
         )
         .execute(&self.pool)
         .await?;
 
-        if result.rows_affected() == 0 {
-            Err(DbError::RefreshTokenNotFound)
-        } else {
-            Ok(())
-        }
+        Ok(())
     }
 
     pub async fn update_password(&self, user_id: &str, password_hash: &str) -> Result<(), DbError> {
@@ -301,12 +302,13 @@ impl UserRepository {
         &self,
         signer: libsigners::HS256Signer,
         user_id: &str,
+        issuerer: String,
     ) -> Result<TokenPair, TokenPairError> {
         let access = create_access_token(signer, user_id)
             .await
             .map_err(TokenPairError::Access)?;
         let rt = self
-            .create_refresh_token(user_id, 1)
+            .create_refresh_token(user_id, 1, issuerer)
             .await
             .map_err(TokenPairError::Refresh)?;
         Ok(TokenPair {
