@@ -2,6 +2,7 @@ mod auth2;
 mod config;
 mod db;
 mod handlers;
+mod handlers_core;
 mod migrations;
 mod models;
 mod passwdless;

@@ -217,6 +217,16 @@ impl UserRepository {
         })
     }
 
+    pub async fn revoke_user_refresh_tokens(&self, user_id: &str) -> Result<(), DbError> {
+        sqlx::query!(
+            "UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = ?",
+            user_id
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
     pub async fn revoke_refresh_token(&self, token: &str) -> Result<(), DbError> {
         sqlx::query!(
             "UPDATE refresh_tokens SET revoked = TRUE WHERE token = ?",
