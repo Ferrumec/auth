@@ -66,14 +66,6 @@ fn random_int(minimum: u32) -> u32 {
     number
 }
 
-/// Generate a random string token and keep it in the tokens cache with the email as the key
-/// Then email the token to the address
-async fn release_link(email: String, tokens: &Cache<String, String>) {
-    let token = random_token();
-    tokens.insert(token.clone(), email.clone()).await;
-    send_email(email, token);
-}
-
 async fn release_pair(email: String, caches: &Caches) {
     let link = random_token();
     let token = random_int(100000);
@@ -233,7 +225,7 @@ impl PasswdlessService {
             None => return Err(PasswdlessError::UserNotFound),
         };
 
-        release_pair(email, &self.caches);
+        release_pair(email, &self.caches).await;
         Ok(())
     }
 }

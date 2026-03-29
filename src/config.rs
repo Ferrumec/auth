@@ -1,5 +1,5 @@
 use crate::{
-    auth2::AppState, handlers, passwdless::PasswdlessService, passwordless::config,
+    auth2::AppState, handlers, passkey, passwdless::PasswdlessService, passwordless::config,
     user_id::username2userid,
 };
 use actix_web::web::{self, ServiceConfig};
@@ -36,6 +36,7 @@ impl AuthModule {
             web::scope(namespace)
                 .app_data(self.state.clone())
                 .service(username2userid)
+                .service(passkey::routes("/passkey"))
                 .service(
                     web::scope("/auth")
                         .route("/register", web::post().to(handlers::register))
