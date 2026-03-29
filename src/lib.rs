@@ -7,7 +7,6 @@ mod migrations;
 mod models;
 mod passkey;
 mod passwdless;
-mod passwordless;
 mod user_id;
 pub use config::{AuthModule, SetupError};
 pub use migrations::run_migration;

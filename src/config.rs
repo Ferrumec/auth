@@ -1,5 +1,7 @@
 use crate::{
-    auth2::AppState, handlers, passkey, passwdless::PasswdlessService, passwordless::config,
+    auth2::AppState,
+    handlers, passkey,
+    passwdless::{PasswdlessService, config},
     user_id::username2userid,
 };
 use actix_web::web::{self, ServiceConfig};
