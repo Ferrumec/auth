@@ -20,7 +20,7 @@ pub async fn start(data: web::Data<AppState>, req: web::Json<UsernameRequest>) -
     let (options, state) = match data.webauthn.start_passkey_authentication(&credentials) {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("WebAuthn start_passkey_authentication: {}", e);
+            tracing::warn!("WebAuthn start_passkey_authentication: {}", e);
             return ErrorResponse::bad_request(format!("WebAuthn error: {}", e));
         }
     };
@@ -49,7 +49,7 @@ pub async fn finish(
     {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("WebAuthn finish_passkey_authentication: {}", e);
+            tracing::warn!("WebAuthn finish_passkey_authentication: {}", e);
             return ErrorResponse::bad_request(format!("WebAuthn error: {}", e));
         }
     };

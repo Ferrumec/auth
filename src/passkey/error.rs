@@ -31,7 +31,7 @@ macro_rules! lock {
         match $mutex.lock() {
             Ok(g) => g,
             Err(e) => {
-                eprintln!("Mutex poisoned: {}", e);
+                tracing::warn!("Mutex poisoned: {}", e);
                 return $crate::passkey::error::ErrorResponse::internal();
             }
         }

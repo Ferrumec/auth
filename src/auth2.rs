@@ -19,7 +19,7 @@ impl AppState {
         let secret = match env::var("SECRET") {
             Ok(r) => Ok(r),
             Err(e) => {
-                eprintln!("env var SECRET not set");
+                tracing::warn!("env var SECRET not set");
                 Err(e)
             }
         }?;
@@ -48,7 +48,7 @@ fn print_varerror(var: &str) -> Result<String, VarError> {
     match env::var(var) {
         Ok(r) => Ok(r),
         Err(e) => {
-            eprintln!("error in getting {} env var: {}", var, e);
+            tracing::warn!("error in getting {} env var: {}", var, e);
             Err(e)
         }
     }

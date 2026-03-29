@@ -115,7 +115,7 @@ pub async fn login_impl(
             expires_in: state.config.access_token_expiry_minutes as u64 * 60,
         })
         .map_err(|error| {
-            eprintln!("Error in creating token pair: {}", error);
+            tracing::warn!("Error in creating token pair: {}", error);
             HandlerError::InternalEmpty
         })
 }
@@ -165,7 +165,7 @@ pub async fn refresh_impl(
         .revoke_refresh_token(refresh_token)
         .await
         .map_err(|error| {
-            eprintln!("Error in revoking refresh token: {}", error);
+            tracing::warn!("Error in revoking refresh token: {}", error);
             HandlerError::InternalEmpty
         })?;
 
@@ -179,7 +179,7 @@ pub async fn refresh_impl(
             expires_in: state.config.access_token_expiry_minutes as u64 * 60,
         })
         .map_err(|error| {
-            eprintln!("Error in creating token pair: {}", error);
+            tracing::warn!("Error in creating token pair: {}", error);
             HandlerError::InternalEmpty
         })
 }

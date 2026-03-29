@@ -80,7 +80,7 @@ async fn confirm_registration(
     {
         Ok(u) => u.id,
         Err(e) => {
-            eprintln!("Error in creating user: {}", e);
+            tracing::warn!("Error in creating user: {}", e);
             return HttpResponse::InternalServerError().finish();
         }
     };
@@ -93,7 +93,7 @@ async fn confirm_registration(
     {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("Error in creating token pair: {}", e);
+            tracing::warn!("Error in creating token pair: {}", e);
             return HttpResponse::InternalServerError().finish();
         }
     };
@@ -127,7 +127,7 @@ async fn confirm_registration_token(
     {
         Ok(u) => u.id,
         Err(e) => {
-            eprintln!("Error in creating user: {}", e);
+            tracing::warn!("Error in creating user: {}", e);
             return HttpResponse::InternalServerError().finish();
         }
     };
@@ -140,7 +140,7 @@ async fn confirm_registration_token(
     {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("Error in creating token pair: {}", e);
+            tracing::warn!("Error in creating token pair: {}", e);
             return HttpResponse::InternalServerError().finish();
         }
     };
@@ -186,7 +186,7 @@ async fn challenge(data: web::Data<AppState>, user_id: web::Path<String>) -> imp
 #[get("/confirm_link/{link}")]
 async fn confirm(data: web::Data<AppState>, token: web::Path<String>) -> impl Responder {
     let token = token.into_inner();
-    let user_id = match data.passwdless_service.confirm(token).await {
+    let user_id = match data.passwdless_service.confirm_link(token).await {
         Ok(r) => r,
         Err(e) => return translate_error(e),
     };
@@ -199,7 +199,7 @@ async fn confirm(data: web::Data<AppState>, token: web::Path<String>) -> impl Re
     {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("Error in creating token pair: {}", e);
+            tracing::warn!("Error in creating token pair: {}", e);
             return HttpResponse::InternalServerError().finish();
         }
     };
@@ -217,6 +217,7 @@ pub fn config(cfg: &mut ServiceConfig) {
             .service(challenge)
             .service(add)
             .service(create)
-            .service(confirm_registration),
+            .service(confirm_registration)
+            .service(confirm_registration_token),
     );
 }

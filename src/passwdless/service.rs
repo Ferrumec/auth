@@ -97,7 +97,7 @@ impl PasswdlessService {
             {
                 Ok(r) => r,
                 Err(e) => {
-                    eprintln!("Error getting email address: {}", e);
+                    tracing::warn!("Error getting email address: {}", e);
                     return Err(PasswdlessError::DbError);
                 }
             };
@@ -137,7 +137,7 @@ impl PasswdlessService {
                 .execute(&self.db)
                 .await
                 {
-                    eprintln!("Error inserting email: {}", e);
+                    tracing::warn!("Error inserting email: {}", e);
                     return Err(PasswdlessError::DbError);
                 }
                 Ok(pending_user_id)
@@ -166,7 +166,7 @@ impl PasswdlessService {
                 .execute(&self.db)
                 .await
                 {
-                    eprintln!("Error inserting email: {}", e);
+                    tracing::warn!("Error inserting email: {}", e);
                     return Err(PasswdlessError::DbError);
                 }
                 Ok(pending_user_id)
@@ -184,7 +184,7 @@ impl PasswdlessService {
             {
                 Ok(r) => r,
                 Err(e) => {
-                    eprintln!("Error getting email address: {}", e);
+                    tracing::warn!("Error getting email address: {}", e);
                     return Err(PasswdlessError::DbError);
                 }
             };
@@ -197,14 +197,24 @@ impl PasswdlessService {
         Ok(())
     }
 
-    pub async fn confirm(&self, token: String) -> Result<String, PasswdlessError> {
+    pub async fn confirm_link(&self, token: String) -> Result<String, PasswdlessError> {
         // Check the email for this token and invalidate the token on success
-        let email = match self.caches.links.remove(&token).await {
+        let fa2 = match self.caches.links.remove(&token).await {
             None => return Err(PasswdlessError::BadToken),
             Some(e) => e,
-        }
-        .email;
-        Ok(email)
+        };
+        self.caches.tokens.remove(&fa2.token).await;
+        Ok(fa2.email)
+    }
+
+    pub async fn confirm_token(&self, token: u32) -> Result<String, PasswdlessError> {
+        // Check the email for this token and invalidate the token on success
+        let fa2 = match self.caches.tokens.remove(&token).await {
+            None => return Err(PasswdlessError::BadToken),
+            Some(e) => e,
+        };
+        self.caches.links.remove(&fa2.link).await;
+        Ok(fa2.email)
     }
 
     pub async fn challenge(&self, user_id: String) -> Result<(), PasswdlessError> {
@@ -216,7 +226,7 @@ impl PasswdlessService {
             {
                 Ok(r) => r,
                 Err(e) => {
-                    eprintln!("Error getting email: {}", e);
+                    tracing::warn!("Error getting email: {}", e);
                     return Err(PasswdlessError::DbError);
                 }
             };

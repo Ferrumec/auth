@@ -211,7 +211,7 @@ impl UserRepository {
         .map_err(|err| match err {
             sqlx::Error::RowNotFound => DbError::RefreshTokenNotFound,
             other => {
-                eprintln!("SQLx error: {:?}", other);
+                tracing::warn!("SQLx error: {:?}", other);
                 DbError::DatabaseError
             }
         })
