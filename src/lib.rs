@@ -5,6 +5,7 @@ mod handlers;
 mod handlers_core;
 mod migrations;
 mod models;
+mod passkey;
 mod passwdless;
 mod passwordless;
 mod user_id;

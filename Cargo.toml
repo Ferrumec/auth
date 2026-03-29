@@ -26,3 +26,7 @@ futures = "0.3.31"
 auth_middleware = {path="../auth_middleware"}
 libsigners = {path="../libsigners"}
 moka = { version = "0.12.13", features = ["future"] }
+actixutils = {path="../actixutils"}
+url = "2.5.8"
+webauthn-rs = "0.5.4"
+tracing = "0.1.44"

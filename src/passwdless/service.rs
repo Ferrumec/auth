@@ -1,11 +1,12 @@
 use moka::future::Cache;
+use rand::random;
 use sqlx::{Pool, Sqlite, query, query_scalar};
 use std::time::Duration;
 use uuid::Uuid;
 
 use crate::auth2::random_token;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum PasswdlessError {
     DbError,
     EmailUsed,
@@ -14,8 +15,16 @@ pub enum PasswdlessError {
 }
 
 pub struct Caches {
-    tokens: Cache<String, String>,
+    links: Cache<String, FA2Entry>,
+    tokens: Cache<u32, FA2Entry>,
     accounts: Cache<String, String>,
+}
+
+#[derive(Clone, PartialEq, Hash, Eq)]
+struct FA2Entry {
+    link: String,
+    token: u32,
+    email: String,
 }
 
 impl Caches {
@@ -23,10 +32,17 @@ impl Caches {
         let tokens = Cache::builder()
             .time_to_live(Duration::from_secs(120))
             .build();
+        let links = Cache::builder()
+            .time_to_live(Duration::from_secs(120))
+            .build();
         let accounts = Cache::builder()
             .time_to_live(Duration::from_secs(120))
             .build();
-        Self { tokens, accounts }
+        Self {
+            tokens,
+            accounts,
+            links,
+        }
     }
 }
 
@@ -36,15 +52,41 @@ pub struct PasswdlessService {
 }
 
 fn send_email(addr: String, text: String) {
-    println!("Email sent:{{ addr: {}, message: {} }}", addr, text)
+    println!(
+        "Email sent: click this link to confirm email {}. \nOr you can use this token on the login page: {} }}",
+        addr, text
+    )
 }
 
-/// Generate a random token and keep it in the tokens cache with the email as the key
+fn random_int(minimum: u32) -> u32 {
+    let mut number = 1;
+    while number < minimum {
+        number *= random::<u32>();
+    }
+    number
+}
+
+/// Generate a random string token and keep it in the tokens cache with the email as the key
 /// Then email the token to the address
-async fn release_token(email: String, tokens: &Cache<String, String>) {
+async fn release_link(email: String, tokens: &Cache<String, String>) {
     let token = random_token();
     tokens.insert(token.clone(), email.clone()).await;
     send_email(email, token);
+}
+
+async fn release_pair(email: String, caches: &Caches) {
+    let link = random_token();
+    let token = random_int(100000);
+    let fa2 = FA2Entry {
+        link,
+        token,
+        email: email.clone(),
+    };
+    caches.tokens.insert(token.clone(), fa2.clone()).await;
+    send_email(
+        email,
+        format!("use link: {} or token: {}", fa2.link, fa2.token),
+    );
 }
 
 impl PasswdlessService {
@@ -78,16 +120,47 @@ impl PasswdlessService {
             .insert(email.clone(), user_id.clone())
             .await;
 
-        release_token(email.clone(), &self.caches.tokens).await;
+        release_pair(email.clone(), &self.caches).await;
         Ok(user_id)
     }
 
     pub async fn confirm_registration(&self, token: String) -> Result<String, PasswdlessError> {
         // Check the email for this token and invalidate the token on success
+        let email = match self.caches.links.remove(&token).await {
+            None => return Err(PasswdlessError::BadToken),
+            Some(e) => e,
+        }
+        .email;
+
+        // Check for a pending account (email -> user_id). If present, persist it.
+        match self.caches.accounts.remove(&email).await {
+            Some(pending_user_id) => {
+                // remove the associated token
+                // Attach email to user
+                if let Err(e) = query!(
+                    "INSERT INTO emails (user, email) VALUES (?, ?)",
+                    pending_user_id,
+                    email
+                )
+                .execute(&self.db)
+                .await
+                {
+                    eprintln!("Error inserting email: {}", e);
+                    return Err(PasswdlessError::DbError);
+                }
+                Ok(pending_user_id)
+            }
+            None => return Err(PasswdlessError::UserNotFound),
+        }
+    }
+
+    pub async fn confirm_registration_token(&self, token: u32) -> Result<String, PasswdlessError> {
+        // Check the email for this token and invalidate the token on success
         let email = match self.caches.tokens.remove(&token).await {
             None => return Err(PasswdlessError::BadToken),
             Some(e) => e,
-        };
+        }
+        .email;
 
         // Check for a pending account (email -> user_id). If present, persist it.
         match self.caches.accounts.remove(&email).await {
@@ -134,10 +207,11 @@ impl PasswdlessService {
 
     pub async fn confirm(&self, token: String) -> Result<String, PasswdlessError> {
         // Check the email for this token and invalidate the token on success
-        let email = match self.caches.tokens.remove(&token).await {
+        let email = match self.caches.links.remove(&token).await {
             None => return Err(PasswdlessError::BadToken),
             Some(e) => e,
-        };
+        }
+        .email;
         Ok(email)
     }
 
@@ -159,13 +233,7 @@ impl PasswdlessService {
             None => return Err(PasswdlessError::UserNotFound),
         };
 
-        // Generate a random token and keep it in the pending tokens cache with the email as the key
-        let token = random_token();
-        self.caches
-            .tokens
-            .insert(token.clone(), email.clone())
-            .await;
-        send_email(email, token);
+        release_pair(email, &self.caches);
         Ok(())
     }
 }

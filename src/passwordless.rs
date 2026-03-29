@@ -1,12 +1,15 @@
 use actix_web::{
-    HttpResponse, Responder, get, post,
+    HttpResponse, Responder, ResponseError, get, post,
     web::{self, ServiceConfig},
 };
-use libsigners::Claims;
+use actixutils::Access;
+use libsigners::Signer;
 use serde::Deserialize;
+use std::fmt::Display;
 
 use crate::{
     auth2::{AppState, random_token},
+    handlers::access_cookie,
     models::LoginResponse,
     passwdless::PasswdlessError,
 };
@@ -19,19 +22,40 @@ fn translate_error(error: PasswdlessError) -> HttpResponse {
         PasswdlessError::UserNotFound => HttpResponse::NotFound().body("User not found"),
     }
 }
+impl Display for PasswdlessError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let r = match self {
+            PasswdlessError::DbError => "service unavailable, please try again later",
+            PasswdlessError::EmailUsed => "Email used",
+            PasswdlessError::BadToken => "Invalid or expired token",
+            PasswdlessError::UserNotFound => "User not found",
+        };
+        write!(f, "{}", r)
+    }
+}
+impl ResponseError for PasswdlessError {
+    fn status_code(&self) -> actix_web::http::StatusCode {
+        translate_error(self.clone()).status()
+    }
+
+    fn error_response(&self) -> HttpResponse<actix_web::body::BoxBody> {
+        return translate_error(self.clone());
+    }
+}
 
 #[derive(Deserialize)]
 struct AddEmailReq {
     email: String,
 }
 
+#[derive(Deserialize)]
+struct Token {
+    token: u32,
+}
+
 #[post("/register/start")]
 async fn create(data: web::Data<AppState>, json: web::Json<AddEmailReq>) -> impl Responder {
-    let user_id = match data.passwdless_service.create(json.email.clone()).await {
-        Ok(r) => r,
-        Err(e) => return translate_error(e),
-    };
-    HttpResponse::Created().body(user_id)
+    data.passwdless_service.create(json.email.clone()).await
 }
 
 #[get("/register/confirm_link/{link}")]
@@ -73,7 +97,55 @@ async fn confirm_registration(
             return HttpResponse::InternalServerError().finish();
         }
     };
-    HttpResponse::Ok().json(LoginResponse {
+    let cookie = access_cookie(tp.access_token.clone());
+    HttpResponse::Ok().cookie(cookie).json(LoginResponse {
+        access_token: tp.access_token,
+        refresh_token: tp.refresh_token,
+        expires_in: 300,
+    })
+}
+
+#[post("/register/confirm_token/")]
+async fn confirm_registration_token(
+    data: web::Data<AppState>,
+    token: web::Json<Token>,
+) -> impl Responder {
+    let pending_user_id = match data
+        .passwdless_service
+        .confirm_registration_token(token.token)
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => return translate_error(e),
+    };
+
+    // Create user
+    let id = match data
+        .user_repo
+        .create_user(&pending_user_id, &random_token())
+        .await
+    {
+        Ok(u) => u.id,
+        Err(e) => {
+            eprintln!("Error in creating user: {}", e);
+            return HttpResponse::InternalServerError().finish();
+        }
+    };
+
+    // Token pair generation
+    let tp = match data
+        .user_repo
+        .create_token_pair(data.signer.clone(), &id, "confirm_registration".to_string())
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Error in creating token pair: {}", e);
+            return HttpResponse::InternalServerError().finish();
+        }
+    };
+    let cookie = access_cookie(tp.access_token.clone());
+    HttpResponse::Ok().cookie(cookie).json(LoginResponse {
         access_token: tp.access_token,
         refresh_token: tp.refresh_token,
         expires_in: 300,
@@ -83,9 +155,10 @@ async fn confirm_registration(
 #[post("/add_email")]
 async fn add(
     data: web::Data<AppState>,
-    claims: web::ReqData<Claims>,
+    claims: Access,
     json: web::Json<AddEmailReq>,
 ) -> impl Responder {
+    let claims = data.signer.validate(&claims.token).unwrap();
     match data
         .passwdless_service
         .add(json.email.clone(), claims.as_user.clone())
