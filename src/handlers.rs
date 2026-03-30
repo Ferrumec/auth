@@ -1,4 +1,4 @@
-use crate::auth2;
+use crate::auth2::{self, AppState};
 use crate::handlers_core::{
     HandlerError, admin_login_impl, change_password_impl, confirm_password_reset_impl, login_impl,
     logout_impl, protected_response, refresh_impl, register_impl, request_password_reset_impl,
@@ -9,6 +9,7 @@ use crate::models::{
 };
 use actix_web::cookie::Cookie;
 use actix_web::{HttpResponse, Responder, web};
+use actixutils::Access;
 use libsigners::Claims;
 use serde_json::json;
 
@@ -65,11 +66,15 @@ pub async fn login(
     }
 }
 
-pub async fn protected(claims: web::ReqData<Claims>) -> impl Responder {
-    HttpResponse::Ok().json(ApiResponse::success(
-        protected_response(claims.into_inner()),
-        "Protected data retrieved successfully",
-    ))
+pub async fn protected(claims: Access, state: web::Data<AppState>) -> impl Responder {
+    if let Ok(claims) = state.signer.validate(&claims.token) {
+        HttpResponse::Ok().json(ApiResponse::success(
+            protected_response(claims),
+            "Protected data retrieved successfully",
+        ))
+    } else {
+        HttpResponse::Unauthorized().finish()
+    }
 }
 
 pub async fn refresh(
@@ -105,14 +110,18 @@ pub async fn logout(
 
 pub async fn change_password(
     data: web::Data<auth2::AppState>,
-    claims: web::ReqData<Claims>,
+    access: Access,
     req: web::Json<ChangePasswordRequest>,
 ) -> impl Responder {
-    match change_password_impl(data.get_ref(), claims.user_id.as_str(), &req).await {
-        Ok(()) => {
-            HttpResponse::Ok().json(ApiResponse::success((), "Password changed successfully"))
+    if let Ok(claims) = data.signer.validate(&access.token) {
+        match change_password_impl(data.get_ref(), claims.user_id.as_str(), &req).await {
+            Ok(()) => {
+                HttpResponse::Ok().json(ApiResponse::success((), "Password changed successfully"))
+            }
+            Err(error) => error.into_http_response(),
         }
-        Err(error) => error.into_http_response(),
+    } else {
+        HttpResponse::Unauthorized().finish()
     }
 }
 

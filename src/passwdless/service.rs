@@ -82,11 +82,11 @@ async fn release_pair(email: String, caches: &Caches) {
 }
 
 impl PasswdlessService {
-    pub async fn new(db: sqlx::Pool<sqlx::Sqlite>) -> Result<Self, sqlx::Error> {
-        Ok(Self {
+    pub async fn new(db: sqlx::Pool<sqlx::Sqlite>) -> Self {
+        Self {
             db,
             caches: Caches::new(),
-        })
+        }
     }
     pub async fn create(&self, email: String) -> Result<String, PasswdlessError> {
         // Check if the email already exists

@@ -7,7 +7,7 @@ use crate::models::{
 };
 use base64::{Engine as _, engine::general_purpose};
 use chrono::Utc;
-use libsigners::{Claims, Signer};
+use libsigners::Claims;
 use rand::{RngCore, rngs::OsRng};
 use sha2::{Digest, Sha256};
 
@@ -107,7 +107,7 @@ pub async fn login_impl(
 
     state
         .user_repo
-        .create_token_pair(state.signer.clone(), &user.id, "username-login".to_string())
+        .create_token_pair(&*state.signer, &user.id, "username-login".to_string())
         .await
         .map(|tokens| AuthTokens {
             access_token: tokens.access_token,
@@ -171,7 +171,7 @@ pub async fn refresh_impl(
 
     state
         .user_repo
-        .create_token_pair(state.signer.clone(), &user.id, db_token.issuerer)
+        .create_token_pair(&*state.signer, &user.id, db_token.issuerer)
         .await
         .map(|tokens| AuthTokens {
             access_token: tokens.access_token,
@@ -202,7 +202,7 @@ pub async fn logout_impl(
             Err(HandlerError::NotFound("Refresh token not found"))
         }
         Err(error) => {
-            println!("Database error: {:?}", error);
+            tracing::warn!("Database error: {:?}", error);
             Err(HandlerError::Internal("Database error"))
         }
     }

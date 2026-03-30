@@ -9,27 +9,24 @@ use std::env::{self, VarError};
 
 pub struct AppState {
     pub user_repo: UserRepository,
-    pub signer: HS256Signer,
+    pub signer: Box<dyn Signer>,
     pub config: Config,
     pub passwdless_service: PasswdlessService,
 }
 
 impl AppState {
-    pub fn new(pool: SqlitePool, passwdless_service: PasswdlessService) -> Result<Self, VarError> {
-        let secret = match env::var("SECRET") {
-            Ok(r) => Ok(r),
-            Err(e) => {
-                tracing::warn!("env var SECRET not set");
-                Err(e)
-            }
-        }?;
-        let config = Config::from_env()?;
-        Ok(Self {
+    pub fn new(
+        pool: SqlitePool,
+        signer: impl Signer,
+        passwdless_service: PasswdlessService,
+    ) -> Self {
+        let config = Config::from_env();
+        Self {
             user_repo: UserRepository::new(pool.clone()),
-            signer: HS256Signer::new(secret),
+            signer: Box::new(signer),
             config,
             passwdless_service,
-        })
+        }
     }
 }
 
@@ -48,17 +45,17 @@ fn print_varerror(var: &str) -> Result<String, VarError> {
     match env::var(var) {
         Ok(r) => Ok(r),
         Err(e) => {
-            tracing::warn!("error in getting {} env var: {}", var, e);
+            tracing::error!("error in getting {} env var: {}", var, e);
             Err(e)
         }
     }
 }
 
 impl Config {
-    pub fn from_env() -> Result<Self, VarError> {
-        let admin_user = print_varerror("ADMIN_USERNAME")?;
-        let admin_pass = print_varerror("ADMIN_PASSWORD")?;
-        Ok(Config {
+    pub fn from_env() -> Self {
+        let admin_user = print_varerror("ADMIN_USERNAME").unwrap();
+        let admin_pass = print_varerror("ADMIN_PASSWORD").unwrap();
+        Config {
             access_token_expiry_minutes: env::var("ACCESS_TOKEN_EXPIRY_MINUTES")
                 .unwrap_or_else(|_| "15".to_string())
                 .parse()
@@ -66,7 +63,7 @@ impl Config {
 
             admin_user,
             admin_pass,
-        })
+        }
     }
 }
 
@@ -85,7 +82,7 @@ pub fn random_token() -> String {
     token
 }
 
-pub async fn create_access_token(signer: HS256Signer, user_id: &str) -> Result<String, Error> {
+pub async fn create_access_token(signer: &dyn Signer, user_id: &str) -> Result<String, Error> {
     let claims = Claims::default(user_id.to_owned(), user_id.to_owned(), "*".to_string());
     signer.sign(&claims)
 }

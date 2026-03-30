@@ -1,6 +1,7 @@
 use std::fmt::Display;
 
 use anyhow::Error;
+use libsigners::Signer;
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, SqlitePool};
 use thiserror::Error;
@@ -310,7 +311,7 @@ impl UserRepository {
 
     pub async fn create_token_pair(
         &self,
-        signer: libsigners::HS256Signer,
+        signer: &dyn Signer,
         user_id: &str,
         issuerer: String,
     ) -> Result<TokenPair, TokenPairError> {

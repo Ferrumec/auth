@@ -5,7 +5,9 @@ use crate::{
     user_id::username2userid,
 };
 use actix_web::web::{self, ServiceConfig};
+use actixutils::pubkey;
 use auth_middleware::Auth;
+use libsigners::Signer;
 use sqlx::{Error, Pool, Sqlite};
 use std::env::VarError;
 
@@ -14,9 +16,25 @@ pub struct AuthModule {
     state: web::Data<AppState>,
 }
 
+#[derive(Debug)]
 pub enum SetupError {
     Db(Error),
     Var(VarError),
+}
+
+impl ToString for SetupError {
+    fn to_string(&self) -> String {
+        match self {
+            SetupError::Db(error) => error.to_string(),
+            SetupError::Var(var_error) => var_error.to_string(),
+        }
+    }
+}
+
+impl From<VarError> for SetupError {
+    fn from(value: VarError) -> Self {
+        SetupError::Var(value)
+    }
 }
 
 impl From<Error> for SetupError {
@@ -26,12 +44,12 @@ impl From<Error> for SetupError {
 }
 
 impl AuthModule {
-    pub async fn new(pool: Pool<Sqlite>) -> Result<Self, SetupError> {
-        let passwdless_service = PasswdlessService::new(pool.clone()).await?;
-        let app_state = AppState::new(pool.clone(), passwdless_service).map_err(SetupError::Var)?;
-        Ok(Self {
+    pub async fn new(pool: Pool<Sqlite>, signer: impl Signer) -> Self {
+        let passwdless_service = PasswdlessService::new(pool.clone()).await;
+        let app_state = AppState::new(pool.clone(), signer, passwdless_service);
+        Self {
             state: web::Data::new(app_state),
-        })
+        }
     }
     pub fn config(&self, cfg: &mut ServiceConfig, namespace: &str) {
         cfg.service(
@@ -58,14 +76,14 @@ impl AuthModule {
                 // 🔐 PROTECTED ROUTES
                 .service(
                     web::scope("/me")
-                        .wrap(Auth)
                         .route("/account", web::get().to(handlers::protected))
                         .route(
                             "/change_password",
                             web::post().to(handlers::change_password),
                         ),
                 )
-                .service(web::scope("/passwordless").configure(config)),
+                .service(web::scope("/passwordless").configure(config))
+                .configure(pubkey::configure),
         );
     }
 }
