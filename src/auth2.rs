@@ -1,31 +1,37 @@
 use crate::{db::UserRepository, passwdless::PasswdlessService};
 use anyhow::Error;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use libsigners::{Claims, HS256Signer, Signer};
+use libsigners::{Claims, Sign, Validate};
 use rand::RngCore;
 use rand::rngs::OsRng;
-use sqlx::SqlitePool;
-use std::env::{self, VarError};
+use sqlx::{Pool, Sqlite, SqlitePool};
+use std::{
+    env::{self, VarError},
+    sync::Arc,
+};
 
 pub struct AppState {
     pub user_repo: UserRepository,
-    pub signer: Box<dyn Signer>,
+    pub signer: Arc<dyn Sign>,
+    pub validator: Arc<dyn Validate>,
     pub config: Config,
     pub passwdless_service: PasswdlessService,
 }
 
 impl AppState {
     pub fn new(
-        pool: SqlitePool,
-        signer: impl Signer,
+        pool: Pool<Sqlite>,
+        signer: Arc<dyn Sign>,
+        validator: Arc<dyn Validate>,
         passwdless_service: PasswdlessService,
     ) -> Self {
         let config = Config::from_env();
         Self {
             user_repo: UserRepository::new(pool.clone()),
-            signer: Box::new(signer),
+            signer,
             config,
             passwdless_service,
+            validator,
         }
     }
 }
@@ -82,7 +88,7 @@ pub fn random_token() -> String {
     token
 }
 
-pub async fn create_access_token(signer: &dyn Signer, user_id: &str) -> Result<String, Error> {
+pub async fn create_access_token(signer: &dyn Sign, user_id: &str) -> Result<String, Error> {
     let claims = Claims::default(user_id.to_owned(), user_id.to_owned(), "*".to_string());
     signer.sign(&claims)
 }

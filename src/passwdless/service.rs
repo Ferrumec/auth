@@ -1,6 +1,6 @@
 use moka::future::Cache;
 use rand::random;
-use sqlx::{Pool, Sqlite, query, query_scalar};
+use sqlx::{Any, Pool, Sqlite, query, query_scalar};
 use std::time::Duration;
 use uuid::Uuid;
 
@@ -82,7 +82,7 @@ async fn release_pair(email: String, caches: &Caches) {
 }
 
 impl PasswdlessService {
-    pub async fn new(db: sqlx::Pool<sqlx::Sqlite>) -> Self {
+    pub async fn new(db: Pool<Sqlite>) -> Self {
         Self {
             db,
             caches: Caches::new(),

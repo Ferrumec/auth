@@ -6,10 +6,9 @@ use crate::{
 };
 use actix_web::web::{self, ServiceConfig};
 use actixutils::pubkey;
-use auth_middleware::Auth;
-use libsigners::Signer;
-use sqlx::{Error, Pool, Sqlite};
-use std::env::VarError;
+use libsigners::{Sign, Validate};
+use sqlx::{Any, Error, Pool, Sqlite};
+use std::{env::VarError, sync::Arc};
 
 #[derive(Clone)]
 pub struct AuthModule {
@@ -44,9 +43,13 @@ impl From<Error> for SetupError {
 }
 
 impl AuthModule {
-    pub async fn new(pool: Pool<Sqlite>, signer: impl Signer) -> Self {
+    pub async fn new(
+        pool: Pool<Sqlite>,
+        signer: Arc<dyn Sign>,
+        validator: Arc<dyn Validate>,
+    ) -> Self {
         let passwdless_service = PasswdlessService::new(pool.clone()).await;
-        let app_state = AppState::new(pool.clone(), signer, passwdless_service);
+        let app_state = AppState::new(pool.clone(), signer, validator, passwdless_service);
         Self {
             state: web::Data::new(app_state),
         }

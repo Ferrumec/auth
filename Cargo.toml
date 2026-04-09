@@ -13,7 +13,7 @@ bcrypt = "0.15"
 dotenv = "0.15"
 env_logger = "0.11"
 log = "0.4"
-sqlx = { version = "0.7", features = ["sqlite", "runtime-tokio-native-tls", "chrono", "migrate"] }
+sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio-native-tls", "chrono", "migrate"] }
 thiserror = "1.0"
 futures-util = "0.3.31"
 uuid = { version = "1.7", features = ["v4", "serde"] }
@@ -23,10 +23,10 @@ serde_json = "1.0.145"
 anyhow = "1"
 sha2 = "0.10.9"
 futures = "0.3.31"
-auth_middleware = {path="../auth_middleware"}
-libsigners = {path="../libsigners"}
+auth_middleware = {git="https://github.com/Austin-rgb/auth_middleware"}
+libsigners = {git="https://github.com/Austin-rgb/libsigners"}
 moka = { version = "0.12.13", features = ["future"] }
-actixutils = {path="../actixutils"}
+actixutils = {git="https://github.com/Austin-rgb/actixutils"}
 url = "2.5.8"
 webauthn-rs = "0.5.4"
 tracing = "0.1.44"

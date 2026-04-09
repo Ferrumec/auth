@@ -157,7 +157,7 @@ async fn add(
     claims: Access,
     json: web::Json<AddEmailReq>,
 ) -> impl Responder {
-    let claims = data.signer.validate(&claims.token).unwrap();
+    let claims = data.validator.validate(&claims.token).unwrap();
     match data
         .passwdless_service
         .add(json.email.clone(), claims.as_user.clone())

@@ -67,7 +67,7 @@ pub async fn login(
 }
 
 pub async fn protected(claims: Access, state: web::Data<AppState>) -> impl Responder {
-    if let Ok(claims) = state.signer.validate(&claims.token) {
+    if let Ok(claims) = state.validator.validate(&claims.token) {
         HttpResponse::Ok().json(ApiResponse::success(
             protected_response(claims),
             "Protected data retrieved successfully",
@@ -113,7 +113,7 @@ pub async fn change_password(
     access: Access,
     req: web::Json<ChangePasswordRequest>,
 ) -> impl Responder {
-    if let Ok(claims) = data.signer.validate(&access.token) {
+    if let Ok(claims) = data.validator.validate(&access.token) {
         match change_password_impl(data.get_ref(), claims.user_id.as_str(), &req).await {
             Ok(()) => {
                 HttpResponse::Ok().json(ApiResponse::success((), "Password changed successfully"))

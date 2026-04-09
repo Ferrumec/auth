@@ -1,9 +1,9 @@
 use std::fmt::Display;
 
 use anyhow::Error;
-use libsigners::Signer;
+use libsigners::Sign;
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, SqlitePool};
+use sqlx::{Any, FromRow, Pool, Sqlite};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -72,11 +72,11 @@ pub struct RefreshToken {
 }
 
 pub struct UserRepository {
-    pool: SqlitePool,
+    pool: Pool<Sqlite>,
 }
 
 impl UserRepository {
-    pub fn new(pool: SqlitePool) -> Self {
+    pub fn new(pool: Pool<Sqlite>) -> Self {
         Self { pool }
     }
 
@@ -311,7 +311,7 @@ impl UserRepository {
 
     pub async fn create_token_pair(
         &self,
-        signer: &dyn Signer,
+        signer: &dyn Sign,
         user_id: &str,
         issuerer: String,
     ) -> Result<TokenPair, TokenPairError> {
