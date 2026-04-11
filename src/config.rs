@@ -85,8 +85,8 @@ impl AuthModule {
                             web::post().to(handlers::change_password),
                         ),
                 )
-                .service(web::scope("/passwordless").configure(config))
-                .configure(pubkey::configure),
+                .service(web::scope("/passwordless").configure(config)),
+                //.configure(pubkey::configure),
         );
     }
 }
