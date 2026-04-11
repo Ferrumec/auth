@@ -1,6 +1,4 @@
 
-
-```markdown
 # API Documentation - Ferrumec/auth
 
 ## Overview
