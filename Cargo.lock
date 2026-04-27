@@ -194,7 +194,7 @@ dependencies = [
  "actix-web",
  "anyhow",
  "futures-util",
- "jsonwebtoken",
+ "jsonwebtoken 9.3.1",
  "libsigners",
  "reqwest",
 ]
@@ -381,6 +381,7 @@ dependencies = [
  "env_logger",
  "futures",
  "futures-util",
+ "jsonwebtoken 10.3.0",
  "libsigners",
  "log",
  "moka",
@@ -1795,6 +1796,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "jsonwebtoken"
+version = "10.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0529410abe238729a60b108898784df8984c87f6054c9c4fcacc47e4803c1ce1"
+dependencies = [
+ "base64 0.22.1",
+ "getrandom 0.2.17",
+ "js-sys",
+ "pem",
+ "serde",
+ "serde_json",
+ "signature",
+ "simple_asn1",
+]
+
+[[package]]
 name = "language-tags"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1846,7 +1863,7 @@ source = "git+https://github.com/Austin-rgb/libsigners#6715fb7669fc4c131fc01a051
 dependencies = [
  "anyhow",
  "chrono",
- "jsonwebtoken",
+ "jsonwebtoken 9.3.1",
  "serde",
  "uuid",
 ]

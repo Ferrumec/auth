@@ -30,3 +30,4 @@ actixutils = {git="https://github.com/Austin-rgb/actixutils"}
 url = "2.5.8"
 webauthn-rs = "0.5.4"
 tracing = "0.1.44"
+jsonwebtoken = "10.3.0"
