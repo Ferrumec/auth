@@ -1,8 +1,9 @@
-mod auth2;
+
 mod config;
-mod db;
+
+mod domain;
 mod handlers;
-mod handlers_core;
+mod auth2;
 mod models;
 mod passkey;
 mod passwdless;

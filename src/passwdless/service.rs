@@ -1,6 +1,6 @@
 use moka::future::Cache;
 use rand::random;
-use sqlx::{Any, Pool, Sqlite, query, query_scalar};
+use sqlx::{Pool, Sqlite, query, query_scalar};
 use std::time::Duration;
 use uuid::Uuid;
 

@@ -5,9 +5,8 @@ use crate::{
     user_id::username2userid,
 };
 use actix_web::web::{self, ServiceConfig};
-use actixutils::pubkey;
 use libsigners::{Sign, Validate};
-use sqlx::{Any, Error, Pool, Sqlite};
+use sqlx::{Error, Pool, Sqlite};
 use std::{env::VarError, sync::Arc};
 
 #[derive(Clone)]

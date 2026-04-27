@@ -21,6 +21,7 @@ fn translate_error(error: PasswdlessError) -> HttpResponse {
         PasswdlessError::UserNotFound => HttpResponse::NotFound().body("User not found"),
     }
 }
+
 impl Display for PasswdlessError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let r = match self {
@@ -32,6 +33,7 @@ impl Display for PasswdlessError {
         write!(f, "{}", r)
     }
 }
+
 impl ResponseError for PasswdlessError {
     fn status_code(&self) -> actix_web::http::StatusCode {
         translate_error(self.clone()).status()
@@ -71,37 +73,38 @@ async fn confirm_registration(
         Err(e) => return translate_error(e),
     };
 
-    // Create user
-    let id = match data
-        .user_repo
-        .create_user(&pending_user_id, &random_token())
+    // Register user with AuthService and get tokens
+    match data
+        .auth_service
+        .register(&pending_user_id, &random_token())
         .await
     {
-        Ok(u) => u.id,
+        Ok(user_id) => {
+            // Issue tokens for passwordless authentication
+            match data
+                .auth_service
+                .issue_for_passwordless(&user_id)
+                .await
+            {
+                Ok(auth_result) => {
+                    let cookie = access_cookie(&auth_result.access_token);
+                    HttpResponse::Ok().cookie(cookie).json(LoginResponse {
+                        access_token: auth_result.access_token,
+                        refresh_token: auth_result.refresh_token,
+                        expires_in: auth_result.expires_in,
+                    })
+                }
+                Err(e) => {
+                    tracing::warn!("Error creating token pair: {}", e);
+                    HttpResponse::InternalServerError().finish()
+                }
+            }
+        }
         Err(e) => {
             tracing::warn!("Error in creating user: {}", e);
-            return HttpResponse::InternalServerError().finish();
+            HttpResponse::InternalServerError().finish()
         }
-    };
-
-    // Token pair generation
-    let tp = match data
-        .user_repo
-        .create_token_pair(&*data.signer, &id, "confirm_registration".to_string())
-        .await
-    {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::warn!("Error in creating token pair: {}", e);
-            return HttpResponse::InternalServerError().finish();
-        }
-    };
-    let cookie = access_cookie(tp.access_token.clone());
-    HttpResponse::Ok().cookie(cookie).json(LoginResponse {
-        access_token: tp.access_token,
-        refresh_token: tp.refresh_token,
-        expires_in: 300,
-    })
+    }
 }
 
 #[post("/register/confirm_token/")]
@@ -118,37 +121,38 @@ async fn confirm_registration_token(
         Err(e) => return translate_error(e),
     };
 
-    // Create user
-    let id = match data
-        .user_repo
-        .create_user(&pending_user_id, &random_token())
+    // Register user with AuthService and get tokens
+    match data
+        .auth_service
+        .register(&pending_user_id, &random_token())
         .await
     {
-        Ok(u) => u.id,
+        Ok(user_id) => {
+            // Issue tokens for passwordless authentication
+            match data
+                .auth_service
+                .issue_for_passwordless(&user_id)
+                .await
+            {
+                Ok(auth_result) => {
+                    let cookie = access_cookie(&auth_result.access_token);
+                    HttpResponse::Ok().cookie(cookie).json(LoginResponse {
+                        access_token: auth_result.access_token,
+                        refresh_token: auth_result.refresh_token,
+                        expires_in: auth_result.expires_in,
+                    })
+                }
+                Err(e) => {
+                    tracing::warn!("Error creating token pair: {}", e);
+                    HttpResponse::InternalServerError().finish()
+                }
+            }
+        }
         Err(e) => {
             tracing::warn!("Error in creating user: {}", e);
-            return HttpResponse::InternalServerError().finish();
+            HttpResponse::InternalServerError().finish()
         }
-    };
-
-    // Token pair generation
-    let tp = match data
-        .user_repo
-        .create_token_pair(&*data.signer, &id, "confirm_registration".to_string())
-        .await
-    {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::warn!("Error in creating token pair: {}", e);
-            return HttpResponse::InternalServerError().finish();
-        }
-    };
-    let cookie = access_cookie(tp.access_token.clone());
-    HttpResponse::Ok().cookie(cookie).json(LoginResponse {
-        access_token: tp.access_token,
-        refresh_token: tp.refresh_token,
-        expires_in: 300,
-    })
+    }
 }
 
 #[post("/add_email")]
@@ -189,24 +193,25 @@ async fn confirm(data: web::Data<AppState>, token: web::Path<String>) -> impl Re
         Ok(r) => r,
         Err(e) => return translate_error(e),
     };
-    // Create token pair
-
-    let tp = match data
-        .user_repo
-        .create_token_pair(&*data.signer, &user_id, "confirm".to_string())
+    
+    // Issue tokens for passwordless authentication
+    match data
+        .auth_service
+        .issue_for_passwordless(&user_id)
         .await
     {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::warn!("Error in creating token pair: {}", e);
-            return HttpResponse::InternalServerError().finish();
+        Ok(auth_result) => {
+            HttpResponse::Ok().json(LoginResponse {
+                access_token: auth_result.access_token,
+                refresh_token: auth_result.refresh_token,
+                expires_in: auth_result.expires_in,
+            })
         }
-    };
-    HttpResponse::Ok().json(LoginResponse {
-        access_token: tp.access_token,
-        refresh_token: tp.refresh_token,
-        expires_in: 300,
-    })
+        Err(e) => {
+            tracing::warn!("Error creating token pair: {}", e);
+            HttpResponse::InternalServerError().finish()
+        }
+    }
 }
 
 pub fn config(cfg: &mut ServiceConfig) {
