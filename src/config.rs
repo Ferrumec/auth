@@ -1,10 +1,11 @@
 use crate::{
     auth2::AppState,
-    handlers, passkey,
+    handlers, //passkey,
     passwdless::{PasswdlessService, config},
     user_id::username2userid,
 };
 use actix_web::web::{self, ServiceConfig};
+use event_stream::EventStream;
 use libsigners::{Sign, Validate};
 use sqlx::{Error, Pool, Sqlite};
 use std::{env::VarError, sync::Arc};
@@ -46,9 +47,10 @@ impl AuthModule {
         pool: Pool<Sqlite>,
         signer: Arc<dyn Sign>,
         validator: Arc<dyn Validate>,
+        es: Arc<dyn EventStream>,
     ) -> Self {
         let passwdless_service = PasswdlessService::new(pool.clone()).await;
-        let app_state = AppState::new(pool.clone(), signer, validator, passwdless_service);
+        let app_state = AppState::new(pool.clone(), signer, validator, passwdless_service, es);
         Self {
             state: web::Data::new(app_state),
         }
@@ -58,7 +60,7 @@ impl AuthModule {
             web::scope(namespace)
                 .app_data(self.state.clone())
                 .service(username2userid)
-                .service(passkey::routes("/passkey"))
+                //.service(passkey::routes("/passkey"))
                 .service(
                     web::scope("/auth")
                         .route("/register", web::post().to(handlers::register))
@@ -85,7 +87,7 @@ impl AuthModule {
                         ),
                 )
                 .service(web::scope("/passwordless").configure(config)),
-                //.configure(pubkey::configure),
+            //.configure(pubkey::configure),
         );
     }
 }

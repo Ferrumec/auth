@@ -5,7 +5,11 @@
 //! submodules.
 
 use chrono::Utc;
+use e2schema::EventMetaData;
+use event_stream::EventStream;
+use event_stream::Publishable;
 use sqlx::{Pool, Sqlite};
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::domain::auth::{
@@ -32,11 +36,12 @@ const MIN_PASSWORD_LEN: usize = 6;
 pub struct AuthService {
     pool: Pool<Sqlite>,
     jwt: JwtConfig,
+    es: Arc<dyn EventStream>,
 }
 
 impl AuthService {
-    pub fn new(pool: Pool<Sqlite>, jwt: JwtConfig) -> Self {
-        Self { pool, jwt }
+    pub fn new(pool: Pool<Sqlite>, jwt: JwtConfig, es: Arc<dyn EventStream>) -> Self {
+        Self { pool, jwt, es }
     }
 
     // ── Password login ────────────────────────────────────────────────────────
@@ -63,11 +68,7 @@ impl AuthService {
     /// Hash the password and create a new user row.
     ///
     /// Returns the new user's ID so callers can optionally auto-login.
-    pub async fn register(
-        &self,
-        username: &str,
-        password: &str,
-    ) -> Result<String, AuthError> {
+    pub async fn register(&self, username: &str, password: &str) -> Result<String, AuthError> {
         if username.is_empty() || password.is_empty() {
             return Err(AuthError::MissingCredentials);
         }
@@ -77,6 +78,18 @@ impl AuthService {
 
         let hash = bcrypt::hash(password, 10)?;
         let user = self.create_user(username, &hash).await?;
+        let _emd = EventMetaData::new("auth");
+        let event = e2schema::user::UserCreated {
+            _emd,
+            user_id: Uuid::from_slice(user.id.as_bytes()).unwrap(),
+            email: username.to_string(),
+            phone: None,
+            country: None,
+        };
+        match event.publish(self.es.clone()).await {
+            Ok(_) => (),
+            Err(e) => tracing::error!("Error occured in publishing user creation event: {e}"),
+        };
         Ok(user.id)
     }
 
@@ -140,8 +153,7 @@ impl AuthService {
 
         let user = self.get_user_by_id(&cmd.user_id).await?;
 
-        let valid = bcrypt::verify(&cmd.current_password, &user.password_hash)
-            .unwrap_or(false);
+        let valid = bcrypt::verify(&cmd.current_password, &user.password_hash).unwrap_or(false);
         if !valid {
             return Err(AuthError::InvalidCredentials);
         }
@@ -161,13 +173,11 @@ impl AuthService {
     /// user is not found (prevents email enumeration).
     pub async fn request_password_reset(&self, cmd: RequestPasswordResetCmd) {
         // Look up by email column in the `emails` table.
-        let user_id: Option<String> = sqlx::query_scalar!(
-            "SELECT user FROM emails WHERE email = ?",
-            cmd.email
-        )
-        .fetch_optional(&self.pool)
-        .await
-        .unwrap_or(None);
+        let user_id: Option<String> =
+            sqlx::query_scalar!("SELECT user FROM emails WHERE email = ?", cmd.email)
+                .fetch_optional(&self.pool)
+                .await
+                .unwrap_or(None);
 
         let user_id = match user_id {
             Some(id) => id,
@@ -245,10 +255,7 @@ impl AuthService {
     /// Issue a token pair for a user who just completed a passwordless
     /// challenge (link or OTP). The caller is responsible for verifying the
     /// challenge beforehand.
-    pub async fn issue_for_passwordless(
-        &self,
-        user_id: &str,
-    ) -> Result<AuthResult, AuthError> {
+    pub async fn issue_for_passwordless(&self, user_id: &str) -> Result<AuthResult, AuthError> {
         self.issue_token_pair(user_id, "passwordless").await
     }
 
@@ -267,11 +274,7 @@ impl AuthService {
     ///
     /// The raw refresh token is returned to the caller exactly once.
     /// Only its hash is persisted.
-    async fn issue_token_pair(
-        &self,
-        user_id: &str,
-        issuer: &str,
-    ) -> Result<AuthResult, AuthError> {
+    async fn issue_token_pair(&self, user_id: &str, issuer: &str) -> Result<AuthResult, AuthError> {
         let access_token = jwt::generate_access_token(user_id, &self.jwt)
             .map_err(|e| AuthError::TokenSigning(e.to_string()))?;
 
@@ -404,12 +407,9 @@ impl AuthService {
 
     /// Hard-delete a single refresh token by hash (rotation).
     async fn delete_refresh_token_by_hash(&self, hash: &str) -> Result<(), AuthError> {
-        sqlx::query!(
-            "DELETE FROM refresh_tokens WHERE token_hash = ?",
-            hash
-        )
-        .execute(&self.pool)
-        .await?;
+        sqlx::query!("DELETE FROM refresh_tokens WHERE token_hash = ?", hash)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -452,4 +452,3 @@ impl AuthService {
         Ok(())
     }
 }
-
