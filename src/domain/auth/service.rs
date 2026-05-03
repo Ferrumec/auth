@@ -93,7 +93,7 @@ impl AuthService {
         let _emd = EventMetaData::new("auth");
         let event = e2schema::user::UserCreated {
             _emd,
-            user_id: match Uuid::from_slice(user.id.as_bytes()) {
+            user_id: match Uuid::parse_str(&user.id) {
                 Ok(uuid) => uuid,
                 Err(e) => {
                     tracing::error!(
