@@ -28,8 +28,8 @@ impl AppState {
         passwdless_service: PasswdlessService,
         es: Arc<dyn EventStream>,
     ) -> Self {
-        let jwt_config = crate::domain::auth::jwt::JwtConfig::from_env();
-        let auth_service = AuthService::new(pool.clone(), jwt_config, es);
+        
+        let auth_service = AuthService::new(pool.clone(), signer.clone(), validator.clone(), es);
 
         let config = AppConfig {
             admin_user: std::env::var("ADMIN_USER").expect("ADMIN_USER must be set"),

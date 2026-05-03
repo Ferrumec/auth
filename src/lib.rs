@@ -8,4 +8,4 @@ mod models;
 mod passkey;
 mod passwdless;
 mod user_id;
-pub use config::{AuthModule, SetupError};
+pub use config::{AuthModule as Module, SetupError};

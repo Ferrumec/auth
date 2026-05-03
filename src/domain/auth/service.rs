@@ -4,14 +4,6 @@
 //! No database queries and no crypto live outside this module and its
 //! submodules.
 
-use chrono::Utc;
-use e2schema::EventMetaData;
-use event_stream::EventStream;
-use event_stream::Publishable;
-use sqlx::{Pool, Sqlite};
-use std::sync::Arc;
-use uuid::Uuid;
-
 use crate::domain::auth::{
     errors::AuthError,
     jwt::{self, JwtConfig},
@@ -21,6 +13,14 @@ use crate::domain::auth::{
     },
     token::{generate_raw_token, hash_token},
 };
+use chrono::Utc;
+use e2schema::EventMetaData;
+use event_stream::EventStream;
+use event_stream::Publishable;
+use libsigners::{Claims, Sign, Validate};
+use sqlx::{Pool, Sqlite};
+use std::sync::Arc;
+use uuid::Uuid;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -35,13 +35,24 @@ const MIN_PASSWORD_LEN: usize = 6;
 /// application startup and shared via `Arc` or Actix `web::Data`.
 pub struct AuthService {
     pool: Pool<Sqlite>,
-    jwt: JwtConfig,
+    signer: Arc<dyn Sign>,
+    validator: Arc<dyn Validate>,
     es: Arc<dyn EventStream>,
 }
 
 impl AuthService {
-    pub fn new(pool: Pool<Sqlite>, jwt: JwtConfig, es: Arc<dyn EventStream>) -> Self {
-        Self { pool, jwt, es }
+    pub fn new(
+        pool: Pool<Sqlite>,
+        signer: Arc<dyn Sign>,
+        validator: Arc<dyn Validate>,
+        es: Arc<dyn EventStream>,
+    ) -> Self {
+        Self {
+            pool,
+            signer,
+            validator,
+            es,
+        }
     }
 
     // ── Password login ────────────────────────────────────────────────────────
@@ -263,8 +274,9 @@ impl AuthService {
 
     /// Verify an access token and return the subject (user ID).
     pub fn verify_access_token(&self, token: &str) -> Result<String, AuthError> {
-        jwt::verify_access_token(token, &self.jwt)
-            .map(|c| c.sub)
+        self.validator
+            .validate(token)
+            .map(|c| c.user_id)
             .map_err(|_| AuthError::InvalidToken)
     }
 
@@ -275,7 +287,13 @@ impl AuthService {
     /// The raw refresh token is returned to the caller exactly once.
     /// Only its hash is persisted.
     async fn issue_token_pair(&self, user_id: &str, issuer: &str) -> Result<AuthResult, AuthError> {
-        let access_token = jwt::generate_access_token(user_id, &self.jwt)
+        let access_token = self
+            .signer
+            .sign(&Claims::default(
+                user_id.to_string(),
+                user_id.to_string(),
+                "auth".to_string(),
+            ))
             .map_err(|e| AuthError::TokenSigning(e.to_string()))?;
 
         let raw_refresh = generate_raw_token();
@@ -303,7 +321,7 @@ impl AuthService {
         Ok(AuthResult {
             access_token,
             refresh_token: raw_refresh, // raw token returned to client, never stored
-            expires_in: self.jwt.access_token_expiry_minutes as u64 * 60,
+            expires_in: 600,
         })
     }
 

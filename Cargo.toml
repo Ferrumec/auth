@@ -21,8 +21,8 @@ libsigners = {git="https://github.com/Austin-rgb/libsigners"}
 moka = { version = "0.12.13", features = ["future"] }
 actixutils = {git="https://github.com/Austin-rgb/actixutils"}
 url = "2.5.8"
-event-stream = {path = "../event-stream"}
-e2schema = {path = "../e2schema"}
+event-stream = {git = "https://github.com/Austin-rgb/event-stream"}
+e2schema = {git = "https://github.com/Austin-rgb/e2schema"}
 webauthn-rs = {version="0.5.4", optional=true}
 tracing = "0.1.44"
 jsonwebtoken = "10.3.0"
