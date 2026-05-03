@@ -4,7 +4,7 @@ use crate::{
     passwdless::{PasswdlessService, config},
     user_id::username2userid,
 };
-use actix_web::web::{self, ServiceConfig};
+use actix_web::web::{self, Data, ServiceConfig};
 use event_stream::EventStream;
 use libsigners::{Sign, Validate};
 use sqlx::{Error, Pool, Sqlite};
@@ -58,7 +58,7 @@ impl AuthModule {
     pub fn config(&self, cfg: &mut ServiceConfig, namespace: &str) {
         cfg.service(
             web::scope(namespace)
-                .app_data(self.state.clone())
+                .app_data(Data::new(self.state.auth_service.clone()))
                 .service(username2userid)
                 //.service(passkey::routes("/passkey"))
                 .service(

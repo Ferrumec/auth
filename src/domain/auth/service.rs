@@ -33,6 +33,7 @@ const MIN_PASSWORD_LEN: usize = 6;
 ///
 /// Owns the database pool and JWT configuration. Constructed once at
 /// application startup and shared via `Arc` or Actix `web::Data`.
+#[derive(Clone)]
 pub struct AuthService {
     pool: Pool<Sqlite>,
     signer: Arc<dyn Sign>,
