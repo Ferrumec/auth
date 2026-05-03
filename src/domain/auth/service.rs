@@ -93,7 +93,17 @@ impl AuthService {
         let _emd = EventMetaData::new("auth");
         let event = e2schema::user::UserCreated {
             _emd,
-            user_id: Uuid::from_slice(user.id.as_bytes()).unwrap(),
+            user_id: match Uuid::from_slice(user.id.as_bytes()) {
+                Ok(uuid) => uuid,
+                Err(e) => {
+                    tracing::error!(
+                        error = %e,
+                        user_id = %user.id,
+                        "Failed to parse user ID as UUID during user creation event publish"
+                    );
+                    return Ok(user.id);
+                }
+            },
             email: username.to_string(),
             phone: None,
             country: None,
