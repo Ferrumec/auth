@@ -4,7 +4,7 @@ use sqlx::{Pool, Sqlite, query, query_scalar};
 use std::time::Duration;
 use uuid::Uuid;
 
-use crate::auth2::random_token;
+use crate::{auth2::random_token, domain::auth::AuthService};
 
 #[derive(Debug, Clone)]
 pub enum PasswdlessError {
@@ -48,6 +48,7 @@ impl Caches {
 
 pub struct PasswdlessService {
     pub db: Pool<Sqlite>,
+    pub auth_service: AuthService,
     pub caches: Caches,
 }
 
@@ -82,16 +83,17 @@ async fn release_pair(email: String, caches: &Caches) {
 }
 
 impl PasswdlessService {
-    pub async fn new(db: Pool<Sqlite>) -> Self {
+    pub fn new(db: Pool<Sqlite>, auth_service: AuthService) -> Self {
         Self {
             db,
+            auth_service,
             caches: Caches::new(),
         }
     }
     pub async fn create(&self, email: String) -> Result<String, PasswdlessError> {
         // Check if the email already exists
         let stored_email: Option<String> =
-            match query_scalar!("SELECT email FROM emails WHERE email = ?", email)
+            match query_scalar!("SELECT email FROM users WHERE email = ?", email)
                 .fetch_optional(&self.db)
                 .await
             {
@@ -129,17 +131,13 @@ impl PasswdlessService {
             Some(pending_user_id) => {
                 // remove the associated token
                 // Attach email to user
-                if let Err(e) = query!(
-                    "INSERT INTO emails (user, email) VALUES (?, ?)",
-                    pending_user_id,
-                    email
-                )
-                .execute(&self.db)
-                .await
-                {
-                    tracing::warn!("Error inserting email: {}", e);
-                    return Err(PasswdlessError::DbError);
-                }
+                match self.auth_service.register(&email, "password").await {
+                    Err(e) => {
+                        tracing::warn!("Error inserting email: {}", e);
+                        return Err(PasswdlessError::DbError);
+                    }
+                    Ok(r) => r,
+                };
                 Ok(pending_user_id)
             }
             None => return Err(PasswdlessError::UserNotFound),
@@ -158,17 +156,13 @@ impl PasswdlessService {
         match self.caches.accounts.remove(&email).await {
             Some(pending_user_id) => {
                 // Attach email to user
-                if let Err(e) = query!(
-                    "INSERT INTO emails (user, email) VALUES (?, ?)",
-                    pending_user_id,
-                    email
-                )
-                .execute(&self.db)
-                .await
-                {
-                    tracing::warn!("Error inserting email: {}", e);
-                    return Err(PasswdlessError::DbError);
-                }
+                match self.auth_service.register(&email, "password").await {
+                    Err(e) => {
+                        tracing::warn!("Error inserting email: {}", e);
+                        return Err(PasswdlessError::DbError);
+                    }
+                    Ok(_) => (),
+                };
                 Ok(pending_user_id)
             }
             None => return Err(PasswdlessError::UserNotFound),
@@ -178,7 +172,7 @@ impl PasswdlessService {
     pub async fn add(&self, email: String, user_id: String) -> Result<(), PasswdlessError> {
         // Ensure this email is not already used by any account.
         let stored_email: Option<String> =
-            match query_scalar!("SELECT email FROM emails WHERE email = ?", email)
+            match query_scalar!("SELECT email FROM users WHERE email = ?", email)
                 .fetch_optional(&self.db)
                 .await
             {
@@ -220,7 +214,7 @@ impl PasswdlessService {
     pub async fn challenge(&self, user_id: String) -> Result<(), PasswdlessError> {
         // Check the emails table for email with this user_id
         let email: Option<String> =
-            match query_scalar!("SELECT email FROM emails WHERE user = ?", user_id)
+            match query_scalar!("SELECT email FROM users WHERE id = ?", user_id)
                 .fetch_optional(&self.db)
                 .await
             {

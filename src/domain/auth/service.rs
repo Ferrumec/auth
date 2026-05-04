@@ -6,7 +6,6 @@
 
 use crate::domain::auth::{
     errors::AuthError,
-    jwt::{self, JwtConfig},
     models::{
         AuthResult, ChangePasswordCmd, ConfirmPasswordResetCmd, LogoutCmd, PasswordLoginCmd,
         PasswordReset, RefreshCmd, RefreshTokenRow, RequestPasswordResetCmd, User,
@@ -80,7 +79,8 @@ impl AuthService {
     /// Hash the password and create a new user row.
     ///
     /// Returns the new user's ID so callers can optionally auto-login.
-    pub async fn register(&self, username: &str, password: &str) -> Result<String, AuthError> {
+    pub async fn register(&self, email: &str, password: &str) -> Result<String, AuthError> {
+        let username = format!("user{}", Utc::now().to_string());
         if username.is_empty() || password.is_empty() {
             return Err(AuthError::MissingCredentials);
         }
@@ -89,7 +89,7 @@ impl AuthService {
         }
 
         let hash = bcrypt::hash(password, 10)?;
-        let user = self.create_user(username, &hash).await?;
+        let user = self.create_user(&username, email, &hash).await?;
         let _emd = EventMetaData::new("auth");
         let event = e2schema::user::UserCreated {
             _emd,
@@ -196,8 +196,8 @@ impl AuthService {
     pub async fn request_password_reset(&self, cmd: RequestPasswordResetCmd) {
         // Look up by email column in the `emails` table.
         let user_id: Option<String> =
-            sqlx::query_scalar!("SELECT user FROM emails WHERE email = ?", cmd.email)
-                .fetch_optional(&self.pool)
+            sqlx::query_scalar!("SELECT id FROM users WHERE email = ?", cmd.email)
+                .fetch_one(&self.pool)
                 .await
                 .unwrap_or(None);
 
@@ -374,15 +374,20 @@ impl AuthService {
         .map_err(|_| AuthError::UserNotFound)
     }
 
-    async fn create_user(&self, username: &str, password_hash: &str) -> Result<User, AuthError> {
+    async fn create_user(
+        &self,
+        username: &str,
+        email: &str,
+        password_hash: &str,
+    ) -> Result<User, AuthError> {
         let id = Uuid::new_v4().to_string();
         let now = Utc::now();
 
         sqlx::query_as!(
             User,
             r#"
-            INSERT INTO users (id, username, password_hash, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO users (id, username, email, password_hash, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
             RETURNING
                 id          as "id!",
                 username    as "username!",
@@ -392,6 +397,7 @@ impl AuthService {
             "#,
             id,
             username,
+            email,
             password_hash,
             now,
             now

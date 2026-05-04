@@ -49,8 +49,7 @@ impl AuthModule {
         validator: Arc<dyn Validate>,
         es: Arc<dyn EventStream>,
     ) -> Self {
-        let passwdless_service = PasswdlessService::new(pool.clone()).await;
-        let app_state = AppState::new(pool.clone(), signer, validator, passwdless_service, es);
+        let app_state = AppState::new(pool.clone(), signer, validator, es);
         Self {
             state: web::Data::new(app_state),
         }

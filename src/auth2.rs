@@ -25,12 +25,10 @@ impl AppState {
         pool: Pool<sqlx::Sqlite>,
         signer: Arc<dyn Sign>,
         validator: Arc<dyn Validate>,
-        passwdless_service: PasswdlessService,
         es: Arc<dyn EventStream>,
     ) -> Self {
-        
         let auth_service = AuthService::new(pool.clone(), signer.clone(), validator.clone(), es);
-
+        let passwdless_service = PasswdlessService::new(pool.clone(), auth_service.clone());
         let config = AppConfig {
             admin_user: std::env::var("ADMIN_USER").expect("ADMIN_USER must be set"),
             admin_pass: std::env::var("ADMIN_PASS").expect("ADMIN_PASS must be set"),
