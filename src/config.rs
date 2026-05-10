@@ -1,12 +1,12 @@
 use crate::{
     auth2::AppState,
     handlers, //passkey,
-    passwdless::{PasswdlessService, config},
+    passwdless::config,
     user_id::username2userid,
 };
 use actix_web::web::{self, Data, ServiceConfig};
+use actixutils::{Identity, Sign, Validate};
 use event_stream::EventStream;
-use libsigners::{Sign, Validate};
 use sqlx::{Error, Pool, Sqlite};
 use std::{env::VarError, sync::Arc};
 
@@ -45,8 +45,8 @@ impl From<Error> for SetupError {
 impl AuthModule {
     pub async fn new(
         pool: Pool<Sqlite>,
-        signer: Arc<dyn Sign>,
-        validator: Arc<dyn Validate>,
+        signer: Arc<dyn Sign<Identity>>,
+        validator: Arc<dyn Validate<Identity>>,
         es: Arc<dyn EventStream>,
     ) -> Self {
         let app_state = AppState::new(pool.clone(), signer, validator, es);
@@ -73,8 +73,7 @@ impl AuthModule {
                         .route(
                             "/confirm_password_reset",
                             web::post().to(handlers::confirm_password_reset),
-                        )
-                        .route("/admin/login", web::post().to(handlers::admin_login)),
+                        ),
                 )
                 // 🔐 PROTECTED ROUTES
                 .service(

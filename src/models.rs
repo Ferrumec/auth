@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 #[derive(Debug, Deserialize)]
 pub struct RegisterRequest {
@@ -36,7 +37,7 @@ pub struct LogoutResponse {
 
 #[derive(Debug, Serialize)]
 pub struct ProtectedResponse {
-    pub user_id: String,
+    pub user_id: Uuid,
     pub message: String,
 }
 

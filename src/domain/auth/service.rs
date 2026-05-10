@@ -12,11 +12,11 @@ use crate::domain::auth::{
     },
     token::{generate_raw_token, hash_token},
 };
+use actixutils::{Identity, Sign, Validate};
 use chrono::Utc;
 use e2schema::EventMetaData;
 use event_stream::EventStream;
 use event_stream::Publishable;
-use libsigners::{Claims, Sign, Validate};
 use sqlx::{Pool, Sqlite};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -35,16 +35,16 @@ const MIN_PASSWORD_LEN: usize = 6;
 #[derive(Clone)]
 pub struct AuthService {
     pool: Pool<Sqlite>,
-    signer: Arc<dyn Sign>,
-    validator: Arc<dyn Validate>,
+    signer: Arc<dyn Sign<Identity>>,
+    validator: Arc<dyn Validate<Identity>>,
     es: Arc<dyn EventStream>,
 }
 
 impl AuthService {
     pub fn new(
         pool: Pool<Sqlite>,
-        signer: Arc<dyn Sign>,
-        validator: Arc<dyn Validate>,
+        signer: Arc<dyn Sign<Identity>>,
+        validator: Arc<dyn Validate<Identity>>,
         es: Arc<dyn EventStream>,
     ) -> Self {
         Self {
@@ -71,7 +71,7 @@ impl AuthService {
             Err(e) => return Err(AuthError::Bcrypt(e)),
         }
 
-        self.issue_token_pair(&user.id, "password-login").await
+        self.issue_token_pair(user.id, "password-login").await
     }
 
     // ── Registration ──────────────────────────────────────────────────────────
@@ -79,7 +79,7 @@ impl AuthService {
     /// Hash the password and create a new user row.
     ///
     /// Returns the new user's ID so callers can optionally auto-login.
-    pub async fn register(&self, email: &str, password: &str) -> Result<String, AuthError> {
+    pub async fn register(&self, email: &str, password: &str) -> Result<Uuid, AuthError> {
         let username = format!("user{}", Utc::now().to_string());
         if username.is_empty() || password.is_empty() {
             return Err(AuthError::MissingCredentials);
@@ -91,19 +91,9 @@ impl AuthService {
         let hash = bcrypt::hash(password, 10)?;
         let user = self.create_user(&username, email, &hash).await?;
         let _emd = EventMetaData::new("auth");
+        let _emd = _emd.with_user_id(user.id);
         let event = e2schema::user::UserCreated {
             _emd,
-            user_id: match Uuid::parse_str(&user.id) {
-                Ok(uuid) => uuid,
-                Err(e) => {
-                    tracing::error!(
-                        error = %e,
-                        user_id = %user.id,
-                        "Failed to parse user ID as UUID during user creation event publish"
-                    );
-                    return Ok(user.id);
-                }
-            },
             email: username.to_string(),
             phone: None,
             country: None,
@@ -145,7 +135,7 @@ impl AuthService {
         // We delete by hash (not by raw token) since that's what's stored.
         self.delete_refresh_token_by_hash(&hash).await?;
 
-        self.issue_token_pair(&user.id, &row.issuer).await
+        self.issue_token_pair(user.id, &row.issuer).await
     }
 
     // ── Logout ────────────────────────────────────────────────────────────────
@@ -239,7 +229,7 @@ impl AuthService {
             r#"
             SELECT
                 id          as "id!",
-                user_id     as "user_id!",
+                user_id     as "user_id!: Uuid",
                 token_hash  as "token_hash!",
                 expires_at  as "expires_at!: chrono::DateTime<chrono::Utc>",
                 used        as "used!",
@@ -277,17 +267,17 @@ impl AuthService {
     /// Issue a token pair for a user who just completed a passwordless
     /// challenge (link or OTP). The caller is responsible for verifying the
     /// challenge beforehand.
-    pub async fn issue_for_passwordless(&self, user_id: &str) -> Result<AuthResult, AuthError> {
+    pub async fn issue_for_passwordless(&self, user_id: Uuid) -> Result<AuthResult, AuthError> {
         self.issue_token_pair(user_id, "passwordless").await
     }
 
     // ── JWT verification (for middleware / protected routes) ──────────────────
 
     /// Verify an access token and return the subject (user ID).
-    pub fn verify_access_token(&self, token: &str) -> Result<String, AuthError> {
+    pub fn verify_access_token(&self, token: &str) -> Result<Uuid, AuthError> {
         self.validator
             .validate(token)
-            .map(|c| c.user_id)
+            .map(|c| c.sub)
             .map_err(|_| AuthError::InvalidToken)
     }
 
@@ -297,14 +287,10 @@ impl AuthService {
     ///
     /// The raw refresh token is returned to the caller exactly once.
     /// Only its hash is persisted.
-    async fn issue_token_pair(&self, user_id: &str, issuer: &str) -> Result<AuthResult, AuthError> {
+    async fn issue_token_pair(&self, user_id: Uuid, issuer: &str) -> Result<AuthResult, AuthError> {
         let access_token = self
             .signer
-            .sign(&Claims::default(
-                user_id.to_string(),
-                user_id.to_string(),
-                "auth".to_string(),
-            ))
+            .sign(&Identity::new(user_id, "auth".to_string()))
             .map_err(|e| AuthError::TokenSigning(e.to_string()))?;
 
         let raw_refresh = generate_raw_token();
@@ -341,7 +327,7 @@ impl AuthService {
             User,
             r#"
             SELECT
-                id          as "id!",
+                id          as "id!: Uuid",
                 username    as "username!",
                 password_hash as "password_hash!",
                 created_at  as "created_at!: chrono::DateTime<chrono::Utc>",
@@ -355,12 +341,12 @@ impl AuthService {
         .map_err(|_| AuthError::InvalidCredentials) // mask whether user exists
     }
 
-    async fn get_user_by_id(&self, id: &str) -> Result<User, AuthError> {
+    async fn get_user_by_id(&self, id: &Uuid) -> Result<User, AuthError> {
         sqlx::query_as!(
             User,
             r#"
             SELECT
-                id          as "id!",
+                id          as "id!: Uuid",
                 username    as "username!",
                 password_hash as "password_hash!",
                 created_at  as "created_at!: chrono::DateTime<chrono::Utc>",
@@ -389,7 +375,7 @@ impl AuthService {
             INSERT INTO users (id, username, email, password_hash, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?)
             RETURNING
-                id          as "id!",
+                id          as "id!: Uuid",
                 username    as "username!",
                 password_hash as "password_hash!",
                 created_at  as "created_at!: chrono::DateTime<chrono::Utc>",
@@ -415,7 +401,7 @@ impl AuthService {
             r#"
             SELECT
                 id          as "id!",
-                user_id     as "user_id!",
+                user_id     as "user_id: Uuid",
                 token_hash  as "token_hash!",
                 issuer      as "issuer!",
                 expires_at  as "expires_at!: chrono::DateTime<chrono::Utc>",
@@ -464,7 +450,7 @@ impl AuthService {
     }
 
     /// Soft-revoke all tokens for a user (password change, reset).
-    async fn revoke_all_user_tokens(&self, user_id: &str) -> Result<(), AuthError> {
+    async fn revoke_all_user_tokens(&self, user_id: &Uuid) -> Result<(), AuthError> {
         sqlx::query!(
             "UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = ?",
             user_id
@@ -474,7 +460,7 @@ impl AuthService {
         Ok(())
     }
 
-    async fn update_password(&self, user_id: &str, hash: &str) -> Result<(), AuthError> {
+    async fn update_password(&self, user_id: &Uuid, hash: &str) -> Result<(), AuthError> {
         let now = Utc::now();
         sqlx::query!(
             "UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?",

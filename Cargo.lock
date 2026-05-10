@@ -188,14 +188,17 @@ dependencies = [
 [[package]]
 name = "actixutils"
 version = "0.1.0"
-source = "git+https://github.com/Austin-rgb/actixutils#f7a4bb77855ac519cc49e212563c2be082ac439c"
 dependencies = [
  "actix-web",
  "anyhow",
+ "async-trait",
+ "chrono",
  "futures-util",
  "jsonwebtoken 9.3.1",
  "libsigners",
  "reqwest",
+ "serde",
+ "uuid",
 ]
 
 [[package]]
@@ -374,7 +377,6 @@ dependencies = [
  "event-stream",
  "futures",
  "jsonwebtoken 10.3.0",
- "libsigners",
  "moka",
  "rand 0.8.6",
  "serde",
@@ -931,7 +933,6 @@ checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
 [[package]]
 name = "e2schema"
 version = "0.1.0"
-source = "git+https://github.com/Austin-rgb/e2schema#9ac684caa28238f131ff9d06631d4cec1b0e5697"
 dependencies = [
  "chrono",
  "event-stream",
@@ -3071,6 +3072,7 @@ dependencies = [
  "tokio-stream",
  "tracing",
  "url",
+ "uuid",
 ]
 
 [[package]]
@@ -3151,6 +3153,7 @@ dependencies = [
  "stringprep",
  "thiserror 2.0.18",
  "tracing",
+ "uuid",
  "whoami",
 ]
 
@@ -3189,6 +3192,7 @@ dependencies = [
  "stringprep",
  "thiserror 2.0.18",
  "tracing",
+ "uuid",
  "whoami",
 ]
 
@@ -3215,6 +3219,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tracing",
  "url",
+ "uuid",
 ]
 
 [[package]]

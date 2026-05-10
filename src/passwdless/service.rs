@@ -1,10 +1,13 @@
 use moka::future::Cache;
 use rand::random;
-use sqlx::{Pool, Sqlite, query, query_scalar};
+use sqlx::{Pool, Sqlite, query, query_as, query_scalar};
 use std::time::Duration;
 use uuid::Uuid;
 
-use crate::{auth2::random_token, domain::auth::AuthService};
+use crate::{
+    auth2::random_token,
+    domain::auth::{AuthService, models::User},
+};
 
 #[derive(Debug, Clone)]
 pub enum PasswdlessError {
@@ -12,6 +15,12 @@ pub enum PasswdlessError {
     EmailUsed,
     BadToken,
     UserNotFound,
+}
+
+impl From<sqlx::Error> for PasswdlessError {
+    fn from(value: sqlx::Error) -> Self {
+        PasswdlessError::DbError
+    }
 }
 
 pub struct Caches {
@@ -201,14 +210,23 @@ impl PasswdlessService {
         Ok(fa2.email)
     }
 
-    pub async fn confirm_token(&self, token: u32) -> Result<String, PasswdlessError> {
+    pub async fn confirm_token(&self, token: u32) -> Result<Uuid, PasswdlessError> {
         // Check the email for this token and invalidate the token on success
         let fa2 = match self.caches.tokens.remove(&token).await {
             None => return Err(PasswdlessError::BadToken),
             Some(e) => e,
         };
         self.caches.links.remove(&fa2.link).await;
-        Ok(fa2.email)
+        let user = query!(
+            r#"select id as "id: Uuid" from users where email = ?"#,
+            fa2.email
+        )
+        .fetch_one(&self.db)
+        .await?;
+        match user.id {
+            Some(id) => Ok(id),
+            None => Err(PasswdlessError::UserNotFound),
+        }
     }
 
     pub async fn challenge(&self, user_id: String) -> Result<(), PasswdlessError> {

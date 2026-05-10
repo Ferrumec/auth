@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 // ── Command types (inputs) ────────────────────────────────────────────────────
 
@@ -32,7 +33,7 @@ pub struct LogoutCmd {
 /// Change the current user's password.
 #[derive(Debug, Deserialize)]
 pub struct ChangePasswordCmd {
-    pub user_id: String,
+    pub user_id: Uuid,
     pub current_password: String,
     pub new_password: String,
 }
@@ -66,7 +67,7 @@ pub struct AuthResult {
 /// A row from the `users` table.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
-    pub id: String,
+    pub id: Uuid,
     pub username: String,
     pub password_hash: String,
     pub created_at: DateTime<Utc>,
@@ -78,7 +79,7 @@ pub struct User {
 #[derive(Debug, Clone)]
 pub struct RefreshTokenRow {
     pub id: String,
-    pub user_id: String,
+    pub user_id: Uuid,
     pub token_hash: String,
     pub issuer: String,
     pub expires_at: DateTime<Utc>,
@@ -90,10 +91,9 @@ pub struct RefreshTokenRow {
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct PasswordReset {
     pub id: String,
-    pub user_id: String,
+    pub user_id: Uuid,
     pub token_hash: String,
     pub expires_at: DateTime<Utc>,
     pub used: bool,
     pub created_at: DateTime<Utc>,
 }
-

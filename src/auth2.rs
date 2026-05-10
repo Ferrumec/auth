@@ -1,15 +1,16 @@
 use crate::domain::auth::service::AuthService;
 use crate::domain::auth::token::generate_raw_token;
 use crate::passwdless::PasswdlessService;
+use actixutils::Identity;
+use actixutils::{Sign, Validate};
 use event_stream::EventStream;
-use libsigners::{Sign, Validate};
 use sqlx::Pool;
 use std::sync::Arc;
 
 pub struct AppState {
     pub pool: Pool<sqlx::Sqlite>,
-    pub signer: Arc<dyn Sign>,
-    pub validator: Arc<dyn Validate>,
+    pub signer: Arc<dyn Sign<Identity>>,
+    pub validator: Arc<dyn Validate<Identity>>,
     pub passwdless_service: PasswdlessService,
     pub auth_service: AuthService,
     pub config: AppConfig,
@@ -23,8 +24,8 @@ pub struct AppConfig {
 impl AppState {
     pub fn new(
         pool: Pool<sqlx::Sqlite>,
-        signer: Arc<dyn Sign>,
-        validator: Arc<dyn Validate>,
+        signer: Arc<dyn Sign<Identity>>,
+        validator: Arc<dyn Validate<Identity>>,
         es: Arc<dyn EventStream>,
     ) -> Self {
         let auth_service = AuthService::new(pool.clone(), signer.clone(), validator.clone(), es);

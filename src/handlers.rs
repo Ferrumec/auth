@@ -7,10 +7,12 @@
 //!
 //! No business logic, no database access, no crypto.
 
-use actix_web::{HttpResponse, Responder, web};
 use actix_web::cookie::{Cookie, SameSite};
-use actixutils::Access;
+use actix_web::{HttpResponse, Responder, web};
+use actixutils::{Authority, Identity};
+use uuid::Uuid;
 
+use crate::auth2::AppState;
 use crate::domain::auth::{
     AuthService,
     errors::AuthError,
@@ -23,7 +25,6 @@ use crate::models::{
     ApiResponse, ChangePasswordRequest, LoginRequest, LoginResponse, LogoutRequest,
     PasswordResetConfirmRequest, PasswordResetRequest, RefreshRequest, RegisterRequest,
 };
-use crate::auth2::AppState;
 
 // ── Error → HTTP ──────────────────────────────────────────────────────────────
 
@@ -96,16 +97,14 @@ pub async fn register(
     req: web::Json<RegisterRequest>,
 ) -> impl Responder {
     match svc.register(&req.username, &req.password).await {
-        Ok(_user_id) => HttpResponse::Created()
-            .json(ApiResponse::success((), "User registered successfully")),
+        Ok(_user_id) => {
+            HttpResponse::Created().json(ApiResponse::success((), "User registered successfully"))
+        }
         Err(e) => auth_error_to_response(e),
     }
 }
 
-pub async fn login(
-    svc: web::Data<AuthService>,
-    req: web::Json<LoginRequest>,
-) -> impl Responder {
+pub async fn login(svc: web::Data<AuthService>, req: web::Json<LoginRequest>) -> impl Responder {
     let cmd = PasswordLoginCmd {
         username: req.username.clone(),
         password: req.password.clone(),
@@ -113,12 +112,10 @@ pub async fn login(
     match svc.password_login(cmd).await {
         Ok(result) => {
             let cookie = access_cookie(&result.access_token);
-            HttpResponse::Ok()
-                .cookie(cookie)
-                .json(ApiResponse::success(
-                    auth_result_to_login_response(result),
-                    "Login successful",
-                ))
+            HttpResponse::Ok().cookie(cookie).json(ApiResponse::success(
+                auth_result_to_login_response(result),
+                "Login successful",
+            ))
         }
         Err(e) => auth_error_to_response(e),
     }
@@ -134,27 +131,21 @@ pub async fn refresh(
     match svc.refresh(cmd).await {
         Ok(result) => {
             let cookie = access_cookie(&result.access_token);
-            HttpResponse::Ok()
-                .cookie(cookie)
-                .json(ApiResponse::success(
-                    auth_result_to_login_response(result),
-                    "Refresh successful",
-                ))
+            HttpResponse::Ok().cookie(cookie).json(ApiResponse::success(
+                auth_result_to_login_response(result),
+                "Refresh successful",
+            ))
         }
         Err(e) => auth_error_to_response(e),
     }
 }
 
-pub async fn logout(
-    svc: web::Data<AuthService>,
-    req: web::Json<LogoutRequest>,
-) -> impl Responder {
+pub async fn logout(svc: web::Data<AuthService>, req: web::Json<LogoutRequest>) -> impl Responder {
     let cmd = LogoutCmd {
         refresh_token: req.refresh_token.clone(),
     };
     match svc.logout(cmd).await {
-        Ok(()) => HttpResponse::Ok()
-            .json(ApiResponse::success((), "Logged out successfully")),
+        Ok(()) => HttpResponse::Ok().json(ApiResponse::success((), "Logged out successfully")),
         Err(e) => auth_error_to_response(e),
     }
 }
@@ -162,17 +153,19 @@ pub async fn logout(
 pub async fn change_password(
     svc: web::Data<AuthService>,
     // The user_id comes from a validated JWT via your existing middleware.
-    user_id: web::ReqData<String>,
+    user_id: web::Path<Uuid>,
     req: web::Json<ChangePasswordRequest>,
 ) -> impl Responder {
+    let user_id = user_id.into_inner();
     let cmd = ChangePasswordCmd {
-        user_id: user_id.into_inner(),
+        user_id: user_id,
         current_password: req.current_password.clone(),
         new_password: req.new_password.clone(),
     };
     match svc.change_password(cmd).await {
-        Ok(()) => HttpResponse::Ok()
-            .json(ApiResponse::success((), "Password changed successfully")),
+        Ok(()) => {
+            HttpResponse::Ok().json(ApiResponse::success((), "Password changed successfully"))
+        }
         Err(e) => auth_error_to_response(e),
     }
 }
@@ -201,52 +194,20 @@ pub async fn confirm_password_reset(
         new_password: req.new_password.clone(),
     };
     match svc.confirm_password_reset(cmd).await {
-        Ok(()) => HttpResponse::Ok()
-            .json(ApiResponse::success((), "Password reset successful")),
+        Ok(()) => HttpResponse::Ok().json(ApiResponse::success((), "Password reset successful")),
         Err(e) => auth_error_to_response(e),
-    }
-}
-
-/// Admin login: validates against static env-var credentials and returns a
-/// signed JWT directly (no refresh token — admin sessions are short-lived).
-pub async fn admin_login(
-    state: web::Data<AppState>,
-    req: web::Json<LoginRequest>,
-) -> impl Responder {
-    if req.username.is_empty() || req.password.is_empty() {
-        return HttpResponse::BadRequest()
-            .json(ApiResponse::<()>::error("Username and password are required"));
-    }
-
-    if !(req.username == state.config.admin_user && req.password == state.config.admin_pass) {
-        return HttpResponse::Unauthorized().finish();
-    }
-
-    let claims = libsigners::Claims::for_admin(state.config.admin_user.clone());
-    match state.signer.sign(&claims) {
-        Ok(token) => {
-            let cookie = access_cookie(&token);
-            HttpResponse::Ok()
-                .cookie(cookie)
-                .json(serde_json::json!({ "token": token }))
-        }
-        Err(_) => HttpResponse::InternalServerError().finish(),
     }
 }
 
 /// Protected route: validates the JWT from the middleware and echoes the
 /// user ID back. Kept on `AppState` so the existing `actixutils::Access`
 /// extractor + `libsigners` validator continue to work unchanged.
-pub async fn protected(claims: Access, state: web::Data<AppState>) -> impl Responder {
-    match state.validator.validate(&claims.token) {
-        Ok(c) => HttpResponse::Ok().json(ApiResponse::success(
-            crate::models::ProtectedResponse {
-                user_id: c.user_id.clone(),
-                message: "Access granted to protected route".to_string(),
-            },
-            "Protected data retrieved successfully",
-        )),
-        Err(_) => HttpResponse::Unauthorized().finish(),
-    }
+pub async fn protected(id: Identity) -> impl Responder {
+    HttpResponse::Ok().json(ApiResponse::success(
+        crate::models::ProtectedResponse {
+            user_id: id.sub,
+            message: "Access granted to protected route".to_string(),
+        },
+        "Protected data retrieved successfully",
+    ))
 }
-

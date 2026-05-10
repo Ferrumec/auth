@@ -2,9 +2,10 @@ use actix_web::{
     HttpResponse, Responder, ResponseError, get, post,
     web::{self, ServiceConfig},
 };
-use actixutils::Access;
+use actixutils::Identity;
 use serde::Deserialize;
 use std::fmt::Display;
+use uuid::Uuid;
 
 use crate::{
     auth2::{AppState, random_token},
@@ -81,11 +82,7 @@ async fn confirm_registration(
     {
         Ok(user_id) => {
             // Issue tokens for passwordless authentication
-            match data
-                .auth_service
-                .issue_for_passwordless(&user_id)
-                .await
-            {
+            match data.auth_service.issue_for_passwordless(user_id).await {
                 Ok(auth_result) => {
                     let cookie = access_cookie(&auth_result.access_token);
                     HttpResponse::Ok().cookie(cookie).json(LoginResponse {
@@ -129,11 +126,7 @@ async fn confirm_registration_token(
     {
         Ok(user_id) => {
             // Issue tokens for passwordless authentication
-            match data
-                .auth_service
-                .issue_for_passwordless(&user_id)
-                .await
-            {
+            match data.auth_service.issue_for_passwordless(user_id).await {
                 Ok(auth_result) => {
                     let cookie = access_cookie(&auth_result.access_token);
                     HttpResponse::Ok().cookie(cookie).json(LoginResponse {
@@ -158,13 +151,12 @@ async fn confirm_registration_token(
 #[post("/add_email")]
 async fn add(
     data: web::Data<AppState>,
-    claims: Access,
+    claims: Identity,
     json: web::Json<AddEmailReq>,
 ) -> impl Responder {
-    let claims = data.validator.validate(&claims.token).unwrap();
     match data
         .passwdless_service
-        .add(json.email.clone(), claims.as_user.clone())
+        .add(json.email.clone(), claims.sub.clone().to_string())
         .await
     {
         Ok(r) => r,
@@ -193,20 +185,18 @@ async fn confirm(data: web::Data<AppState>, token: web::Path<String>) -> impl Re
         Ok(r) => r,
         Err(e) => return translate_error(e),
     };
-    
+
     // Issue tokens for passwordless authentication
     match data
         .auth_service
-        .issue_for_passwordless(&user_id)
+        .issue_for_passwordless(Uuid::parse_str(&user_id).unwrap())
         .await
     {
-        Ok(auth_result) => {
-            HttpResponse::Ok().json(LoginResponse {
-                access_token: auth_result.access_token,
-                refresh_token: auth_result.refresh_token,
-                expires_in: auth_result.expires_in,
-            })
-        }
+        Ok(auth_result) => HttpResponse::Ok().json(LoginResponse {
+            access_token: auth_result.access_token,
+            refresh_token: auth_result.refresh_token,
+            expires_in: auth_result.expires_in,
+        }),
         Err(e) => {
             tracing::warn!("Error creating token pair: {}", e);
             HttpResponse::InternalServerError().finish()
