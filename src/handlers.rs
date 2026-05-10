@@ -9,10 +9,9 @@
 
 use actix_web::cookie::{Cookie, SameSite};
 use actix_web::{HttpResponse, Responder, web};
-use actixutils::{Authority, Identity};
+use actixutils::Identity;
 use uuid::Uuid;
 
-use crate::auth2::AppState;
 use crate::domain::auth::{
     AuthService,
     errors::AuthError,

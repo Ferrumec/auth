@@ -1,12 +1,12 @@
 use moka::future::Cache;
 use rand::random;
-use sqlx::{Pool, Sqlite, query, query_as, query_scalar};
+use sqlx::{Pool, Sqlite, query, query_scalar};
 use std::time::Duration;
 use uuid::Uuid;
 
 use crate::{
     auth2::random_token,
-    domain::auth::{AuthService, models::User},
+    domain::auth::AuthService,
 };
 
 #[derive(Debug, Clone)]
@@ -18,7 +18,7 @@ pub enum PasswdlessError {
 }
 
 impl From<sqlx::Error> for PasswdlessError {
-    fn from(value: sqlx::Error) -> Self {
+    fn from(_value: sqlx::Error) -> Self {
         PasswdlessError::DbError
     }
 }
