@@ -12,7 +12,7 @@ use crate::domain::auth::{
     },
     token::{generate_raw_token, hash_token},
 };
-use actixutils::{Identity, Sign, Validate};
+use actixutils::{Identity, Sign};
 use chrono::Utc;
 use event_stream::Event;
 use event_stream::EventMetaData;
@@ -74,7 +74,7 @@ impl AuthService {
     ///
     /// Returns the new user's ID so callers can optionally auto-login.
     pub async fn register(&self, email: &str, password: &str) -> Result<Uuid, AuthError> {
-        let username = format!("user{}", Utc::now().to_string());
+        let username = format!("user{}", Utc::now());
         if username.is_empty() || password.is_empty() {
             return Err(AuthError::MissingCredentials);
         }

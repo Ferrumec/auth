@@ -84,7 +84,7 @@ async fn release_pair(email: String, caches: &Caches) {
         token,
         email: email.clone(),
     };
-    caches.tokens.insert(token.clone(), fa2.clone()).await;
+    caches.tokens.insert(token, fa2.clone()).await;
     send_email(
         email,
         format!("use link: {} or token: {}", fa2.link, fa2.token),
@@ -149,7 +149,7 @@ impl PasswdlessService {
                 };
                 Ok(pending_user_id)
             }
-            None => return Err(PasswdlessError::UserNotFound),
+            None => Err(PasswdlessError::UserNotFound),
         }
     }
 
@@ -165,16 +165,13 @@ impl PasswdlessService {
         match self.caches.accounts.remove(&email).await {
             Some(pending_user_id) => {
                 // Attach email to user
-                match self.auth_service.register(&email, "password").await {
-                    Err(e) => {
-                        tracing::warn!("Error inserting email: {}", e);
-                        return Err(PasswdlessError::DbError);
-                    }
-                    Ok(_) => (),
+                if let Err(e) = self.auth_service.register(&email, "password").await {
+                    tracing::warn!("Error inserting email: {}", e);
+                    return Err(PasswdlessError::DbError);
                 };
                 Ok(pending_user_id)
             }
-            None => return Err(PasswdlessError::UserNotFound),
+            None => Err(PasswdlessError::UserNotFound),
         }
     }
 

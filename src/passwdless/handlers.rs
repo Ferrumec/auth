@@ -41,7 +41,7 @@ impl ResponseError for PasswdlessError {
     }
 
     fn error_response(&self) -> HttpResponse<actix_web::body::BoxBody> {
-        return translate_error(self.clone());
+        translate_error(self.clone())
     }
 }
 

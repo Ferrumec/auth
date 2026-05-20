@@ -157,7 +157,7 @@ pub async fn change_password(
 ) -> impl Responder {
     let user_id = user_id.into_inner();
     let cmd = ChangePasswordCmd {
-        user_id: user_id,
+        user_id,
         current_password: req.current_password.clone(),
         new_password: req.new_password.clone(),
     };
