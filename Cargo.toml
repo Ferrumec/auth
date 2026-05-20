@@ -18,19 +18,20 @@ serde_json = "1.0.145"
 sha2 = "0.10.9"
 futures = "0.3.31"
 moka = { version = "0.12.13", features = ["future"] }
-actixutils = {git="https://github.com/Austin-rgb/actixutils"}
+#actixutils = {git="https://github.com/Austin-rgb/actixutils"}
 url = "2.5.8"
-event-stream = {git = "https://github.com/Austin-rgb/event-stream"}
-e2schema = {git = "https://github.com/Austin-rgb/e2schema"}
+#event-stream = {git = "https://github.com/Austin-rgb/event-stream"}
+#e2schema = {git = "https://github.com/Austin-rgb/e2schema"}
 webauthn-rs = {version="0.5.4", optional=true}
 tracing = "0.1.44"
 jsonwebtoken = "10.3.0"
+event-stream = { path = "../event-stream" }
+#[patch."https://github.com/Austin-rgb/actixutils"]
+actixutils = {path="../actixutils"}
+
+#[patch."https://github.com/Austin-rgb/e2schema"]
+e2schema = {path="../e2schema"}
 
 [features]
 passkey = ["webauthn-rs"]
 
-[patch."https://github.com/Austin-rgb/e2schema"]
-e2schema = {path="../e2schema"}
-
-[patch."https://github.com/Austin-rgb/actixutils"]
-actixutils = {path="../actixutils"}

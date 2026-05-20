@@ -5,7 +5,7 @@ use crate::{
     user_id::username2userid,
 };
 use actix_web::web::{self, Data, ServiceConfig};
-use actixutils::{Identity, Sign, Validate};
+use actixutils::{Identity, OrphanWrapper, Sign, Validate};
 use event_stream::EventStream;
 use sqlx::{Error, Pool, Sqlite};
 use std::{env::VarError, sync::Arc};
@@ -45,11 +45,11 @@ impl From<Error> for SetupError {
 impl AuthModule {
     pub async fn new(
         pool: Pool<Sqlite>,
-        signer: Arc<dyn Sign<Identity>>,
-        validator: Arc<dyn Validate<Identity>>,
-        es: Arc<dyn EventStream>,
+        signer: OrphanWrapper<Arc<dyn Sign<Identity>>>,
+        validator: OrphanWrapper<Arc<dyn Validate<Identity>>>,
+        es: event_stream::OrphanWrapper<Arc<dyn EventStream>>,
     ) -> Self {
-        let app_state = AppState::new(pool.clone(), signer, validator, es);
+        let app_state = AppState::new(pool.clone(), signer.0, validator.0, es.0);
         Self {
             state: web::Data::new(app_state),
         }

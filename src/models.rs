@@ -31,11 +31,6 @@ pub struct LoginResponse {
 }
 
 #[derive(Debug, Serialize)]
-pub struct LogoutResponse {
-    pub message: String,
-}
-
-#[derive(Debug, Serialize)]
 pub struct ProtectedResponse {
     pub user_id: Uuid,
     pub message: String,

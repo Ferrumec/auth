@@ -11,13 +11,6 @@ pub struct PasswordLoginCmd {
     pub password: String,
 }
 
-/// Passwordless login confirmation (link token or numeric OTP).
-#[derive(Debug)]
-pub enum PasswdlessConfirmCmd {
-    Link(String),
-    Otp(u32),
-}
-
 /// Refresh an access token using a long-lived refresh token.
 #[derive(Debug, Deserialize)]
 pub struct RefreshCmd {

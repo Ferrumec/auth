@@ -14,7 +14,8 @@ use crate::domain::auth::{
 };
 use actixutils::{Identity, Sign, Validate};
 use chrono::Utc;
-use e2schema::EventMetaData;
+use event_stream::Event;
+use event_stream::EventMetaData;
 use event_stream::EventStream;
 use event_stream::Publishable;
 use sqlx::{Pool, Sqlite};
@@ -36,7 +37,6 @@ const MIN_PASSWORD_LEN: usize = 6;
 pub struct AuthService {
     pool: Pool<Sqlite>,
     signer: Arc<dyn Sign<Identity>>,
-    validator: Arc<dyn Validate<Identity>>,
     es: Arc<dyn EventStream>,
 }
 
@@ -44,15 +44,9 @@ impl AuthService {
     pub fn new(
         pool: Pool<Sqlite>,
         signer: Arc<dyn Sign<Identity>>,
-        validator: Arc<dyn Validate<Identity>>,
         es: Arc<dyn EventStream>,
     ) -> Self {
-        Self {
-            pool,
-            signer,
-            validator,
-            es,
-        }
+        Self { pool, signer, es }
     }
 
     // ── Password login ────────────────────────────────────────────────────────
@@ -63,7 +57,7 @@ impl AuthService {
             return Err(AuthError::MissingCredentials);
         }
 
-        let user = self.get_user_by_username(&cmd.username).await?;
+        let user = self.get_user_by_email(&cmd.username).await?;
 
         match bcrypt::verify(&cmd.password, &user.password_hash) {
             Ok(true) => {}
@@ -93,11 +87,11 @@ impl AuthService {
         let _emd = EventMetaData::new("auth");
         let _emd = _emd.with_user_id(user.id);
         let event = e2schema::user::UserCreated {
-            _emd,
             email: username.to_string(),
             phone: None,
             country: None,
         };
+        let event = Event::new(_emd, event);
         match event.publish(self.es.clone()).await {
             Ok(_) => (),
             Err(e) => tracing::error!("Error occured in publishing user creation event: {e}"),
@@ -271,16 +265,6 @@ impl AuthService {
         self.issue_token_pair(user_id, "passwordless").await
     }
 
-    // ── JWT verification (for middleware / protected routes) ──────────────────
-
-    /// Verify an access token and return the subject (user ID).
-    pub fn verify_access_token(&self, token: &str) -> Result<Uuid, AuthError> {
-        self.validator
-            .validate(token)
-            .map(|c| c.sub)
-            .map_err(|_| AuthError::InvalidToken)
-    }
-
     // ── Private helpers ───────────────────────────────────────────────────────
 
     /// Issue a fresh access token + refresh token pair.
@@ -341,6 +325,25 @@ impl AuthService {
         .map_err(|_| AuthError::InvalidCredentials) // mask whether user exists
     }
 
+    async fn get_user_by_email(&self, email: &str) -> Result<User, AuthError> {
+        sqlx::query_as!(
+            User,
+            r#"
+            SELECT
+                id          as "id!: Uuid",
+                username    as "username!",
+                password_hash as "password_hash!",
+                created_at  as "created_at!: chrono::DateTime<chrono::Utc>",
+                updated_at  as "updated_at!: chrono::DateTime<chrono::Utc>"
+            FROM users WHERE email = ?
+            "#,
+            email
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|_| AuthError::InvalidCredentials) // mask whether user exists
+    }
+
     async fn get_user_by_id(&self, id: &Uuid) -> Result<User, AuthError> {
         sqlx::query_as!(
             User,
@@ -366,7 +369,7 @@ impl AuthService {
         email: &str,
         password_hash: &str,
     ) -> Result<User, AuthError> {
-        let id = Uuid::new_v4().to_string();
+        let id = Uuid::new_v4();
         let now = Utc::now();
 
         sqlx::query_as!(
