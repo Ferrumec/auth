@@ -17,7 +17,6 @@ use chrono::Utc;
 use event_stream::Event;
 use event_stream::EventMetaData;
 use event_stream::EventStream;
-use event_stream::Publishable;
 use sqlx::{Pool, Sqlite};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -38,6 +37,7 @@ pub struct AuthService {
     pool: Pool<Sqlite>,
     signer: Arc<dyn Sign<Identity>>,
     es: Arc<dyn EventStream>,
+    aud: Vec<String>,
 }
 
 impl AuthService {
@@ -46,7 +46,17 @@ impl AuthService {
         signer: Arc<dyn Sign<Identity>>,
         es: Arc<dyn EventStream>,
     ) -> Self {
-        Self { pool, signer, es }
+        let aud = std::env::var("AUD")
+            .expect("AUD env var not set")
+            .split(",")
+            .map(|s| s.trim().to_string())
+            .collect();
+        Self {
+            pool,
+            signer,
+            es,
+            aud,
+        }
     }
 
     // ── Password login ────────────────────────────────────────────────────────
@@ -274,7 +284,10 @@ impl AuthService {
     async fn issue_token_pair(&self, user_id: Uuid, issuer: &str) -> Result<AuthResult, AuthError> {
         let access_token = self
             .signer
-            .sign(&Identity::new(user_id, "auth".to_string()))
+            .sign(&Identity::new(
+                user_id,
+                self.aud.clone(),
+            ))
             .map_err(|e| AuthError::TokenSigning(e.to_string()))?;
 
         let raw_refresh = generate_raw_token();

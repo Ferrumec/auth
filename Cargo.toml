@@ -31,6 +31,8 @@ actixutils = {path="../actixutils"}
 
 #[patch."https://github.com/Austin-rgb/e2schema"]
 e2schema = {path="../e2schema"}
+validator = "0.20.0"
+anyhow = "1.0.102"
 
 [features]
 passkey = ["webauthn-rs"]

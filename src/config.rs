@@ -42,6 +42,12 @@ impl From<Error> for SetupError {
     }
 }
 
+impl Validate<Identity> for AppState {
+    fn validate(&self, token: &str) -> anyhow::Result<Identity> {
+        self.validator.validate(token)
+    }
+}
+
 impl AuthModule {
     pub async fn new(
         pool: Pool<Sqlite>,
