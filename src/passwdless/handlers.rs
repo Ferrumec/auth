@@ -2,7 +2,7 @@ use actix_web::{
     HttpResponse, Responder, ResponseError, get, post,
     web::{self, ServiceConfig},
 };
-use actixutils::Identity;
+use actixutils::{Identity,Auth};
 use serde::Deserialize;
 use std::fmt::Display;
 use uuid::Uuid;
@@ -151,12 +151,12 @@ async fn confirm_registration_token(
 #[post("/add_email")]
 async fn add(
     data: web::Data<AppState>,
-    claims: Identity,
+    Auth(id): Auth<Identity>,
     json: web::Json<AddEmailReq>,
 ) -> impl Responder {
     match data
         .passwdless_service
-        .add(json.email.clone(), claims.sub.clone().to_string())
+        .add(json.email.clone(), id.sub.clone().to_string())
         .await
     {
         Ok(r) => r,

@@ -1,15 +1,8 @@
 //! HTTP handlers.
-//!
-//! Every handler does exactly three things:
-//!   1. Parse the request body / extract credentials.
-//!   2. Call the appropriate `AuthService` method.
-//!   3. Map the result to an HTTP response.
-//!
-//! No business logic, no database access, no crypto.
 
 use actix_web::cookie::{Cookie, SameSite};
 use actix_web::{HttpResponse, Responder, web};
-use actixutils::Identity;
+use actixutils::{Identity,Auth};
 use uuid::Uuid;
 
 use crate::domain::auth::{
@@ -69,27 +62,6 @@ pub fn access_cookie(token: &str) -> Cookie<'static> {
         .same_site(SameSite::Strict)
         .finish()
 }
-
-// ── BEFORE (for comparison, kept as dead code) ────────────────────────────────
-//
-// pub async fn login_BEFORE(
-//     data: web::Data<auth2::AppState>,
-//     req: web::Json<LoginRequest>,
-// ) -> impl Responder {
-//     // Called handlers_core::login_impl which:
-//     //   – did password verify
-//     //   – called user_repo.create_token_pair (which called db.create_refresh_token)
-//     //   – stored raw token in DB
-//     //   – returned AuthTokens
-//     match login_impl(data.get_ref(), &req).await {
-//         Ok(tokens) => HttpResponse::Ok()
-//             .cookie(access_cookie(tokens.access_token.clone()))
-//             .json(ApiResponse::success(LoginResponse { ... }, "Login successful")),
-//         Err(error) => error.into_http_response(),
-//     }
-// }
-
-// ── AFTER ─────────────────────────────────────────────────────────────────────
 
 pub async fn register(
     svc: web::Data<AuthService>,
@@ -201,7 +173,7 @@ pub async fn confirm_password_reset(
 /// Protected route: validates the JWT from the middleware and echoes the
 /// user ID back. Kept on `AppState` so the existing `actixutils::Access`
 /// extractor + `libsigners` validator continue to work unchanged.
-pub async fn protected(id: Identity) -> impl Responder {
+pub async fn protected(Auth(id): Auth<Identity>) -> impl Responder {
     HttpResponse::Ok().json(ApiResponse::success(
         crate::models::ProtectedResponse {
             user_id: id.sub,
