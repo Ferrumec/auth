@@ -36,7 +36,7 @@ const MIN_PASSWORD_LEN: usize = 6;
 pub struct AuthService {
     pool: Pool<Sqlite>,
     signer: Arc<dyn Sign<Identity>>,
-    es: Arc<dyn EventStream>,
+    pub es: Arc<dyn EventStream>,
     aud: Vec<String>,
 }
 
@@ -331,7 +331,7 @@ impl AuthService {
         })
     }
 
-    async fn get_user_by_username(&self, username: &str) -> Result<User, AuthError> {
+    pub async fn get_user_by_username(&self, username: &str) -> Result<User, AuthError> {
         sqlx::query_as!(
             User,
             r#"
@@ -350,7 +350,7 @@ impl AuthService {
         .map_err(|_| AuthError::InvalidCredentials) // mask whether user exists
     }
 
-    async fn get_user_by_email(&self, email: &str) -> Result<User, AuthError> {
+    pub async fn get_user_by_email(&self, email: &str) -> Result<User, AuthError> {
         sqlx::query_as!(
             User,
             r#"

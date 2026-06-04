@@ -30,7 +30,7 @@ pub struct Caches {
 struct FA2Entry {
     link: String,
     token: u32,
-    email: String,
+    email: Uuid,
 }
 
 impl Caches {
@@ -58,13 +58,6 @@ pub struct PasswdlessService {
     pub caches: Caches,
 }
 
-fn send_email(addr: String, text: String) {
-    println!(
-        "Email sent: click this link to confirm email {}. \nOr you can use this token on the login page: {} }}",
-        addr, text
-    )
-}
-
 fn random_int(minimum: u32) -> u32 {
     let mut number = 1;
     while number < minimum {
@@ -73,19 +66,16 @@ fn random_int(minimum: u32) -> u32 {
     number
 }
 
-async fn release_pair(email: String, caches: &Caches) {
+async fn release_pair(email: Uuid, caches: &Caches) -> (u32, String) {
     let link = random_token();
     let token = random_int(100000);
     let fa2 = FA2Entry {
-        link,
+        link: link.clone(),
         token,
         email: email.clone(),
     };
     caches.tokens.insert(token, fa2.clone()).await;
-    send_email(
-        email,
-        format!("use link: {} or token: {}", fa2.link, fa2.token),
-    );
+    (token, link)
 }
 
 impl PasswdlessService {
@@ -96,105 +86,8 @@ impl PasswdlessService {
             caches: Caches::new(),
         }
     }
-    pub async fn create(&self, email: String) -> Result<String, PasswdlessError> {
-        // Check if the email already exists
-        let stored_email: Option<String> =
-            match query_scalar!("SELECT email FROM users WHERE email = ?", email)
-                .fetch_optional(&self.db)
-                .await
-            {
-                Ok(r) => r,
-                Err(e) => {
-                    tracing::warn!("Error getting email address: {}", e);
-                    return Err(PasswdlessError::DbError);
-                }
-            };
-        if stored_email.is_some() {
-            return Err(PasswdlessError::EmailUsed);
-        }
 
-        // Create a pending account and return the user_id so the client can request a challenge.
-        let user_id = Uuid::new_v4().to_string();
-        self.caches
-            .accounts
-            .insert(email.clone(), user_id.clone())
-            .await;
-
-        release_pair(email.clone(), &self.caches).await;
-        Ok(user_id)
-    }
-
-    pub async fn confirm_registration(&self, token: String) -> Result<String, PasswdlessError> {
-        // Check the email for this token and invalidate the token on success
-        let email = match self.caches.links.remove(&token).await {
-            None => return Err(PasswdlessError::BadToken),
-            Some(e) => e,
-        }
-        .email;
-
-        // Check for a pending account (email -> user_id). If present, persist it.
-        match self.caches.accounts.remove(&email).await {
-            Some(pending_user_id) => {
-                // remove the associated token
-                // Attach email to user
-                match self.auth_service.register(&email, "password").await {
-                    Err(e) => {
-                        tracing::warn!("Error inserting email: {}", e);
-                        return Err(PasswdlessError::DbError);
-                    }
-                    Ok(r) => r,
-                };
-                Ok(pending_user_id)
-            }
-            None => Err(PasswdlessError::UserNotFound),
-        }
-    }
-
-    pub async fn confirm_registration_token(&self, token: u32) -> Result<String, PasswdlessError> {
-        // Check the email for this token and invalidate the token on success
-        let email = match self.caches.tokens.remove(&token).await {
-            None => return Err(PasswdlessError::BadToken),
-            Some(e) => e,
-        }
-        .email;
-
-        // Check for a pending account (email -> user_id). If present, persist it.
-        match self.caches.accounts.remove(&email).await {
-            Some(pending_user_id) => {
-                // Attach email to user
-                if let Err(e) = self.auth_service.register(&email, "password").await {
-                    tracing::warn!("Error inserting email: {}", e);
-                    return Err(PasswdlessError::DbError);
-                };
-                Ok(pending_user_id)
-            }
-            None => Err(PasswdlessError::UserNotFound),
-        }
-    }
-
-    pub async fn add(&self, email: String, user_id: String) -> Result<(), PasswdlessError> {
-        // Ensure this email is not already used by any account.
-        let stored_email: Option<String> =
-            match query_scalar!("SELECT email FROM users WHERE email = ?", email)
-                .fetch_optional(&self.db)
-                .await
-            {
-                Ok(r) => r,
-                Err(e) => {
-                    tracing::warn!("Error getting email address: {}", e);
-                    return Err(PasswdlessError::DbError);
-                }
-            };
-        if stored_email.is_some() {
-            return Err(PasswdlessError::EmailUsed);
-        }
-
-        // Store pending email -> user_id for confirmation.
-        self.caches.accounts.insert(email.clone(), user_id).await;
-        Ok(())
-    }
-
-    pub async fn confirm_link(&self, token: String) -> Result<String, PasswdlessError> {
+    pub async fn confirm_link(&self, token: String) -> Result<Uuid, PasswdlessError> {
         // Check the email for this token and invalidate the token on success
         let fa2 = match self.caches.links.remove(&token).await {
             None => return Err(PasswdlessError::BadToken),
@@ -211,37 +104,10 @@ impl PasswdlessService {
             Some(e) => e,
         };
         self.caches.links.remove(&fa2.link).await;
-        let user = query!(
-            r#"select id as "id: Uuid" from users where email = ?"#,
-            fa2.email
-        )
-        .fetch_one(&self.db)
-        .await?;
-        match user.id {
-            Some(id) => Ok(id),
-            None => Err(PasswdlessError::UserNotFound),
-        }
+        Ok(fa2.email)
     }
 
-    pub async fn challenge(&self, user_id: String) -> Result<(), PasswdlessError> {
-        // Check the emails table for email with this user_id
-        let email: Option<String> =
-            match query_scalar!("SELECT email FROM users WHERE id = ?", user_id)
-                .fetch_optional(&self.db)
-                .await
-            {
-                Ok(r) => r,
-                Err(e) => {
-                    tracing::warn!("Error getting email: {}", e);
-                    return Err(PasswdlessError::DbError);
-                }
-            };
-        let email = match email {
-            Some(e) => e,
-            None => return Err(PasswdlessError::UserNotFound),
-        };
-
-        release_pair(email, &self.caches).await;
-        Ok(())
+    pub async fn challenge(&self, user_id: Uuid) -> Result<(u32, String), PasswdlessError> {
+        Ok(release_pair(user_id, &self.caches).await)
     }
 }

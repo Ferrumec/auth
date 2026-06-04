@@ -2,8 +2,8 @@ use actix_web::{
     HttpResponse, Responder, ResponseError, get, post,
     web::{self, ServiceConfig},
 };
-use actixutils::{Auth, Identity};
-use serde::Deserialize;
+use event_stream::{Event, EventMetaData, Publishable};
+use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use uuid::Uuid;
 
@@ -55,124 +55,39 @@ struct Token {
     token: u32,
 }
 
-#[post("/register/start")]
-async fn create(data: web::Data<AppState>, json: web::Json<AddEmailReq>) -> impl Responder {
-    data.passwdless_service.create(json.email.clone()).await
-}
-
-#[get("/register/confirm_link/{link}")]
-async fn confirm_registration(
-    data: web::Data<AppState>,
-    token: web::Path<String>,
-) -> impl Responder {
-    let pending_user_id = match data
-        .passwdless_service
-        .confirm_registration(token.into_inner())
-        .await
-    {
-        Ok(r) => r,
-        Err(e) => return translate_error(e),
-    };
-
-    // Register user with AuthService and get tokens
-    match data
+#[get("/challenge/email/{user_id}")]
+async fn challenge1(data: web::Data<AppState>, email: web::Path<String>) -> impl Responder {
+    let user = data
         .auth_service
-        .register(&pending_user_id, &random_token())
+        .get_user_by_email(&email.into_inner())
         .await
-    {
-        Ok(user_id) => {
-            // Issue tokens for passwordless authentication
-            match data.auth_service.issue_for_passwordless(user_id).await {
-                Ok(auth_result) => {
-                    let cookie = access_cookie(&auth_result.access_token);
-                    HttpResponse::Ok().cookie(cookie).json(LoginResponse {
-                        access_token: auth_result.access_token,
-                        refresh_token: auth_result.refresh_token,
-                        expires_in: auth_result.expires_in,
-                    })
-                }
-                Err(e) => {
-                    tracing::warn!("Error creating token pair: {}", e);
-                    HttpResponse::InternalServerError().finish()
-                }
-            }
+        .unwrap();
+    match data.passwdless_service.challenge(user.id).await {
+        Ok((token, link)) => {
+            let emd = EventMetaData::new("auth").with_user_id(user.id);
+            let payload = ChallengeRequested { token, link };
+            let event = Event::new(emd, payload);
+            let _ = event.publish(data.auth_service.es.clone()).await;
         }
-        Err(e) => {
-            tracing::warn!("Error in creating user: {}", e);
-            HttpResponse::InternalServerError().finish()
-        }
-    }
-}
-
-#[post("/register/confirm_token/")]
-async fn confirm_registration_token(
-    data: web::Data<AppState>,
-    token: web::Json<Token>,
-) -> impl Responder {
-    let pending_user_id = match data
-        .passwdless_service
-        .confirm_registration_token(token.token)
-        .await
-    {
-        Ok(r) => r,
         Err(e) => return translate_error(e),
-    };
-
-    // Register user with AuthService and get tokens
-    match data
-        .auth_service
-        .register(&pending_user_id, &random_token())
-        .await
-    {
-        Ok(user_id) => {
-            // Issue tokens for passwordless authentication
-            match data.auth_service.issue_for_passwordless(user_id).await {
-                Ok(auth_result) => {
-                    let cookie = access_cookie(&auth_result.access_token);
-                    HttpResponse::Ok().cookie(cookie).json(LoginResponse {
-                        access_token: auth_result.access_token,
-                        refresh_token: auth_result.refresh_token,
-                        expires_in: auth_result.expires_in,
-                    })
-                }
-                Err(e) => {
-                    tracing::warn!("Error creating token pair: {}", e);
-                    HttpResponse::InternalServerError().finish()
-                }
-            }
-        }
-        Err(e) => {
-            tracing::warn!("Error in creating user: {}", e);
-            HttpResponse::InternalServerError().finish()
-        }
     }
-}
-
-#[post("/add_email")]
-async fn add(
-    data: web::Data<AppState>,
-    Auth(id): Auth<Identity>,
-    json: web::Json<AddEmailReq>,
-) -> impl Responder {
-    match data
-        .passwdless_service
-        .add(json.email.clone(), id.sub.clone().to_string())
-        .await
-    {
-        Ok(r) => r,
-        Err(e) => return translate_error(e),
-    };
     HttpResponse::Created().finish()
 }
 
-#[get("/challenge/{user_id}")]
-async fn challenge(data: web::Data<AppState>, user_id: web::Path<String>) -> impl Responder {
-    match data
-        .passwdless_service
-        .challenge(user_id.into_inner())
+#[get("/challenge/username/{username}")]
+async fn challenge2(data: web::Data<AppState>, username: web::Path<String>) -> impl Responder {
+    let user = data
+        .auth_service
+        .get_user_by_username(&username.into_inner())
         .await
-    {
-        Ok(r) => r,
+        .unwrap();
+    match data.passwdless_service.challenge(user.id).await {
+        Ok((token, link)) => {
+            let emd = EventMetaData::new("auth").with_user_id(user.id);
+            let payload = ChallengeRequested { token, link };
+            let event = Event::new(emd, payload);
+            let _ = event.publish(data.auth_service.es.clone()).await;
+        }
         Err(e) => return translate_error(e),
     }
     HttpResponse::Created().finish()
@@ -187,11 +102,29 @@ async fn confirm(data: web::Data<AppState>, token: web::Path<String>) -> impl Re
     };
 
     // Issue tokens for passwordless authentication
-    match data
-        .auth_service
-        .issue_for_passwordless(Uuid::parse_str(&user_id).unwrap())
-        .await
-    {
+    match data.auth_service.issue_for_passwordless(user_id).await {
+        Ok(auth_result) => HttpResponse::Ok().json(LoginResponse {
+            access_token: auth_result.access_token,
+            refresh_token: auth_result.refresh_token,
+            expires_in: auth_result.expires_in,
+        }),
+        Err(e) => {
+            tracing::warn!("Error creating token pair: {}", e);
+            HttpResponse::InternalServerError().finish()
+        }
+    }
+}
+
+#[get("/confirm_link/{link}")]
+async fn confirm_token(data: web::Data<AppState>, token: web::Json<Token>) -> impl Responder {
+    let token = token.into_inner();
+    let user_id = match data.passwdless_service.confirm_token(token.token).await {
+        Ok(r) => r,
+        Err(e) => return translate_error(e),
+    };
+
+    // Issue tokens for passwordless authentication
+    match data.auth_service.issue_for_passwordless(user_id).await {
         Ok(auth_result) => HttpResponse::Ok().json(LoginResponse {
             access_token: auth_result.access_token,
             refresh_token: auth_result.refresh_token,
@@ -208,10 +141,17 @@ pub fn config(cfg: &mut ServiceConfig) {
     cfg.service(
         web::scope("")
             .service(confirm)
-            .service(challenge)
-            .service(add)
-            .service(create)
-            .service(confirm_registration)
-            .service(confirm_registration_token),
+            .service(challenge1)
+            .service(challenge2),
     );
+}
+
+#[derive(Serialize)]
+struct ChallengeRequested {
+    token: u32,
+    link: String,
+}
+
+impl Publishable for ChallengeRequested {
+    const SUBJECT: &'static str = "auth.2fa.challenge.requested";
 }
