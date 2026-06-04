@@ -1,6 +1,6 @@
 use moka::future::Cache;
 use rand::random;
-use sqlx::{Pool, Sqlite, query, query_scalar};
+use sqlx::{Pool, Sqlite};
 use std::time::Duration;
 use uuid::Uuid;
 
@@ -72,7 +72,7 @@ async fn release_pair(email: Uuid, caches: &Caches) -> (u32, String) {
     let fa2 = FA2Entry {
         link: link.clone(),
         token,
-        email: email.clone(),
+        email: email,
     };
     caches.tokens.insert(token, fa2.clone()).await;
     (token, link)

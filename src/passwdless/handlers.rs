@@ -1,15 +1,13 @@
 use actix_web::{
-    HttpResponse, Responder, ResponseError, get, post,
+    HttpResponse, Responder, ResponseError, get,
     web::{self, ServiceConfig},
 };
 use event_stream::{Event, EventMetaData, Publishable};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
-use uuid::Uuid;
 
 use crate::{
-    auth2::{AppState, random_token},
-    handlers::access_cookie,
+    auth2::AppState,
     models::LoginResponse,
     passwdless::PasswdlessError,
 };

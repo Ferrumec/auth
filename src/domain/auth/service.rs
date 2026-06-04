@@ -108,7 +108,7 @@ impl AuthService {
         }
 
         let hash = bcrypt::hash(password, 10)?;
-        let user = self.create_user(&username, &hash).await?;
+        let user = self.create_user(username, &hash).await?;
         let _emd = EventMetaData::new("auth");
         let _emd = _emd.with_user_id(user.id);
         let event = e2schema::user::UserCreated {
