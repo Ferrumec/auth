@@ -8,11 +8,11 @@ pub async fn username2userid(
     username: web::Path<String>,
 ) -> impl Responder {
     let username = username.into_inner();
-    
+
     let result = sqlx::query_scalar!("SELECT id FROM users WHERE username = ?", username)
         .fetch_optional(&state.pool)
         .await;
-    
+
     match result {
         Ok(Some(id)) => HttpResponse::Ok().body(id.unwrap()),
         Ok(None) => HttpResponse::NotFound().finish(),

@@ -4,10 +4,7 @@ use sqlx::{Pool, Sqlite, query, query_scalar};
 use std::time::Duration;
 use uuid::Uuid;
 
-use crate::{
-    auth2::random_token,
-    domain::auth::AuthService,
-};
+use crate::{auth2::random_token, domain::auth::AuthService};
 
 #[derive(Debug, Clone)]
 pub enum PasswdlessError {

@@ -5,7 +5,7 @@ use crate::{
     user_id::username2userid,
 };
 use actix_web::web::{self, Data, ServiceConfig};
-use actixutils::{Identity,  Sign, Validate};
+use actixutils::{Identity, Sign, Validate};
 use event_stream::EventStream;
 use sqlx::{Error, Pool, Sqlite};
 use std::{env::VarError, sync::Arc};
@@ -53,7 +53,7 @@ impl AuthModule {
         pool: Pool<Sqlite>,
         signer: Arc<dyn Sign<Identity>>,
         validator: Arc<dyn Validate<Identity>>,
-        es: Arc<dyn EventStream>
+        es: Arc<dyn EventStream>,
     ) -> Self {
         let app_state = AppState::new(pool.clone(), signer, validator, es);
         Self {
@@ -69,7 +69,8 @@ impl AuthModule {
                 .service(
                     web::scope("/auth")
                         .route("/register", web::post().to(handlers::register))
-                        .route("/login", web::post().to(handlers::login))
+                        .route("/login/email", web::post().to(handlers::login))
+                        .route("/login/username", web::post().to(handlers::username_login))
                         .route("/refresh", web::post().to(handlers::refresh))
                         .route("/logout", web::post().to(handlers::logout))
                         .route(

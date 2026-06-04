@@ -67,4 +67,3 @@ mod tests {
         assert_eq!(h.len(), 64); // SHA-256 → 32 bytes → 64 hex chars
     }
 }
-

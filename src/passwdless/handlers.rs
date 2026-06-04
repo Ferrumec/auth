@@ -2,7 +2,7 @@ use actix_web::{
     HttpResponse, Responder, ResponseError, get, post,
     web::{self, ServiceConfig},
 };
-use actixutils::{Identity,Auth};
+use actixutils::{Auth, Identity};
 use serde::Deserialize;
 use std::fmt::Display;
 use uuid::Uuid;

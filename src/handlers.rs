@@ -2,7 +2,7 @@
 
 use actix_web::cookie::{Cookie, SameSite};
 use actix_web::{HttpResponse, Responder, web};
-use actixutils::{Identity,Auth};
+use actixutils::{Auth, Identity};
 use uuid::Uuid;
 
 use crate::domain::auth::{
@@ -81,6 +81,26 @@ pub async fn login(svc: web::Data<AuthService>, req: web::Json<LoginRequest>) ->
         password: req.password.clone(),
     };
     match svc.password_login(cmd).await {
+        Ok(result) => {
+            let cookie = access_cookie(&result.access_token);
+            HttpResponse::Ok().cookie(cookie).json(ApiResponse::success(
+                auth_result_to_login_response(result),
+                "Login successful",
+            ))
+        }
+        Err(e) => auth_error_to_response(e),
+    }
+}
+
+pub async fn username_login(
+    svc: web::Data<AuthService>,
+    req: web::Json<LoginRequest>,
+) -> impl Responder {
+    let cmd = PasswordLoginCmd {
+        username: req.username.clone(),
+        password: req.password.clone(),
+    };
+    match svc.username_login(cmd).await {
         Ok(result) => {
             let cookie = access_cookie(&result.access_token);
             HttpResponse::Ok().cookie(cookie).json(ApiResponse::success(

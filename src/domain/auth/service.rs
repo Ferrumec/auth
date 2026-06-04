@@ -78,13 +78,28 @@ impl AuthService {
         self.issue_token_pair(user.id, "password-login").await
     }
 
+    pub async fn username_login(&self, cmd: PasswordLoginCmd) -> Result<AuthResult, AuthError> {
+        if cmd.username.is_empty() || cmd.password.is_empty() {
+            return Err(AuthError::MissingCredentials);
+        }
+
+        let user = self.get_user_by_username(&cmd.username).await?;
+
+        match bcrypt::verify(&cmd.password, &user.password_hash) {
+            Ok(true) => {}
+            Ok(false) => return Err(AuthError::InvalidCredentials),
+            Err(e) => return Err(AuthError::Bcrypt(e)),
+        }
+
+        self.issue_token_pair(user.id, "password-login").await
+    }
+
     // ── Registration ──────────────────────────────────────────────────────────
 
     /// Hash the password and create a new user row.
     ///
     /// Returns the new user's ID so callers can optionally auto-login.
-    pub async fn register(&self, email: &str, password: &str) -> Result<Uuid, AuthError> {
-        let username = format!("user{}", Utc::now());
+    pub async fn register(&self, username: &str, password: &str) -> Result<Uuid, AuthError> {
         if username.is_empty() || password.is_empty() {
             return Err(AuthError::MissingCredentials);
         }
@@ -93,7 +108,7 @@ impl AuthService {
         }
 
         let hash = bcrypt::hash(password, 10)?;
-        let user = self.create_user(&username, email, &hash).await?;
+        let user = self.create_user(&username, &hash).await?;
         let _emd = EventMetaData::new("auth");
         let _emd = _emd.with_user_id(user.id);
         let event = e2schema::user::UserCreated {
@@ -284,10 +299,7 @@ impl AuthService {
     async fn issue_token_pair(&self, user_id: Uuid, issuer: &str) -> Result<AuthResult, AuthError> {
         let access_token = self
             .signer
-            .sign(&Identity::new(
-                user_id,
-                self.aud.clone(),
-            ))
+            .sign(&Identity::new(user_id, self.aud.clone()))
             .map_err(|e| AuthError::TokenSigning(e.to_string()))?;
 
         let raw_refresh = generate_raw_token();
@@ -376,20 +388,15 @@ impl AuthService {
         .map_err(|_| AuthError::UserNotFound)
     }
 
-    async fn create_user(
-        &self,
-        username: &str,
-        email: &str,
-        password_hash: &str,
-    ) -> Result<User, AuthError> {
+    async fn create_user(&self, username: &str, password_hash: &str) -> Result<User, AuthError> {
         let id = Uuid::new_v4();
         let now = Utc::now();
 
         sqlx::query_as!(
             User,
             r#"
-            INSERT INTO users (id, username, email, password_hash, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO users (id, username, password_hash, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
             RETURNING
                 id          as "id!: Uuid",
                 username    as "username!",
@@ -399,7 +406,6 @@ impl AuthService {
             "#,
             id,
             username,
-            email,
             password_hash,
             now,
             now
@@ -431,13 +437,10 @@ impl AuthService {
         .fetch_one(&self.pool)
         .await
         .map(|r| RefreshTokenRow {
-            id: r.id,
             user_id: r.user_id,
-            token_hash: r.token_hash,
             issuer: r.issuer,
             expires_at: r.expires_at,
             revoked: r.revoked,
-            created_at: r.created_at,
         })
         .map_err(|_| AuthError::RefreshTokenNotFound)
     }

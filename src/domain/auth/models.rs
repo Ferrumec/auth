@@ -69,15 +69,11 @@ pub struct User {
 
 /// A row from the `refresh_tokens` table.
 /// `token_hash` is SHA-256(raw_token). The raw token is **never** stored.
-#[derive(Debug, Clone)]
 pub struct RefreshTokenRow {
-    pub id: String,
     pub user_id: Uuid,
-    pub token_hash: String,
     pub issuer: String,
     pub expires_at: DateTime<Utc>,
     pub revoked: bool,
-    pub created_at: DateTime<Utc>,
 }
 
 /// A row from the `password_resets` table.

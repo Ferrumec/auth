@@ -24,4 +24,3 @@ impl User {
 pub struct UsernameRequest {
     pub username: String,
 }
-

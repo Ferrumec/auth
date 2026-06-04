@@ -11,8 +11,8 @@ pub struct Config {
 impl Config {
     pub fn from_env() -> Self {
         // In a real project, pull these from env vars or a config file.
-        let origin_str = std::env::var("ORIGIN")
-            .unwrap_or_else(|_| "http://localhost:8000".to_string());
+        let origin_str =
+            std::env::var("ORIGIN").unwrap_or_else(|_| "http://localhost:8000".to_string());
 
         Self {
             host: "127.0.0.1",
@@ -29,4 +29,3 @@ impl Config {
             .expect("Failed to build Webauthn")
     }
 }
-
