@@ -371,6 +371,7 @@ dependencies = [
  "actix-web",
  "actixutils",
  "anyhow",
+ "async-trait",
  "base64 0.22.1",
  "bcrypt",
  "chrono",

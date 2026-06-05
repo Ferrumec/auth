@@ -55,7 +55,7 @@ impl AuthModule {
         validator: Arc<dyn Validate<Identity>>,
         es: Arc<dyn EventStream>,
     ) -> Self {
-        let app_state = AppState::new(pool.clone(), signer, validator, es);
+        let app_state = AppState::new(pool.clone(), signer, validator, es).await;
         Self {
             state: web::Data::new(app_state),
         }
