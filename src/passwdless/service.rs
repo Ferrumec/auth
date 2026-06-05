@@ -1,15 +1,14 @@
+use crate::{auth2::random_token, domain::auth::AuthService};
+use event_stream::{Event, EventMetaData, Publishable};
 use moka::future::Cache;
 use rand::random;
-use sqlx::{Pool, Sqlite};
+use serde::Serialize;
 use std::time::Duration;
 use uuid::Uuid;
-
-use crate::{auth2::random_token, domain::auth::AuthService};
 
 #[derive(Debug, Clone)]
 pub enum PasswdlessError {
     DbError,
-    EmailUsed,
     BadToken,
     UserNotFound,
 }
@@ -23,7 +22,6 @@ impl From<sqlx::Error> for PasswdlessError {
 pub struct Caches {
     links: Cache<String, FA2Entry>,
     tokens: Cache<u32, FA2Entry>,
-    accounts: Cache<String, String>,
 }
 
 #[derive(Clone, PartialEq, Hash, Eq)]
@@ -41,19 +39,12 @@ impl Caches {
         let links = Cache::builder()
             .time_to_live(Duration::from_secs(120))
             .build();
-        let accounts = Cache::builder()
-            .time_to_live(Duration::from_secs(120))
-            .build();
-        Self {
-            tokens,
-            accounts,
-            links,
-        }
+
+        Self { tokens, links }
     }
 }
 
 pub struct PasswdlessService {
-    pub db: Pool<Sqlite>,
     pub auth_service: AuthService,
     pub caches: Caches,
 }
@@ -72,16 +63,15 @@ async fn release_pair(email: Uuid, caches: &Caches) -> (u32, String) {
     let fa2 = FA2Entry {
         link: link.clone(),
         token,
-        email: email,
+        email,
     };
     caches.tokens.insert(token, fa2.clone()).await;
     (token, link)
 }
 
 impl PasswdlessService {
-    pub fn new(db: Pool<Sqlite>, auth_service: AuthService) -> Self {
+    pub fn new(auth_service: AuthService) -> Self {
         Self {
-            db,
             auth_service,
             caches: Caches::new(),
         }
@@ -107,7 +97,42 @@ impl PasswdlessService {
         Ok(fa2.email)
     }
 
-    pub async fn challenge(&self, user_id: Uuid) -> Result<(u32, String), PasswdlessError> {
-        Ok(release_pair(user_id, &self.caches).await)
+    pub async fn challenge_by_email(&self, email: &String) -> Result<(), PasswdlessError> {
+        let user = match self.auth_service.get_user_by_email(email).await {
+            Ok(r) => r,
+            Err(_) => return Err(PasswdlessError::UserNotFound),
+        };
+
+        let (token, link) = release_pair(user.id, &self.caches).await;
+        let emd = EventMetaData::new("auth").with_user_id(user.id);
+        let payload = ChallengeRequested { token, link };
+        let event = Event::new(emd, payload);
+        let _ = event.publish(self.auth_service.es.clone()).await;
+
+        Ok(())
     }
+    pub async fn challenge_by_username(&self, email: &String) -> Result<(), PasswdlessError> {
+        let user = match self.auth_service.get_user_by_username(email).await {
+            Ok(r) => r,
+            Err(_) => return Err(PasswdlessError::UserNotFound),
+        };
+
+        let (token, link) = release_pair(user.id, &self.caches).await;
+        let emd = EventMetaData::new("auth").with_user_id(user.id);
+        let payload = ChallengeRequested { token, link };
+        let event = Event::new(emd, payload);
+        let _ = event.publish(self.auth_service.es.clone()).await;
+
+        Ok(())
+    }
+}
+
+#[derive(Serialize)]
+struct ChallengeRequested {
+    token: u32,
+    link: String,
+}
+
+impl Publishable for ChallengeRequested {
+    const SUBJECT: &'static str = "auth.2fa.challenge.requested";
 }

@@ -22,7 +22,7 @@ impl AppState {
         es: Arc<dyn EventStream>,
     ) -> Self {
         let auth_service = AuthService::new(pool.clone(), signer.clone(), es);
-        let passwdless_service = PasswdlessService::new(pool.clone(), auth_service.clone());
+        let passwdless_service = PasswdlessService::new(auth_service.clone());
 
         Self {
             pool,

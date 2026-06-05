@@ -1,21 +1,16 @@
 use actix_web::{
-    HttpResponse, Responder, ResponseError, get,
+    HttpResponse, Responder, ResponseError, get, post,
     web::{self, ServiceConfig},
 };
-use event_stream::{Event, EventMetaData, Publishable};
-use serde::{Deserialize, Serialize};
+
+use serde::Deserialize;
 use std::fmt::Display;
 
-use crate::{
-    auth2::AppState,
-    models::LoginResponse,
-    passwdless::PasswdlessError,
-};
+use crate::{auth2::AppState, models::LoginResponse, passwdless::PasswdlessError};
 
 fn translate_error(error: PasswdlessError) -> HttpResponse {
     match error {
         PasswdlessError::DbError => HttpResponse::InternalServerError().finish(),
-        PasswdlessError::EmailUsed => HttpResponse::Conflict().body("Email used"),
         PasswdlessError::BadToken => HttpResponse::BadRequest().body("Invalid or expired token"),
         PasswdlessError::UserNotFound => HttpResponse::NotFound().body("User not found"),
     }
@@ -25,7 +20,6 @@ impl Display for PasswdlessError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let r = match self {
             PasswdlessError::DbError => "service unavailable, please try again later",
-            PasswdlessError::EmailUsed => "Email used",
             PasswdlessError::BadToken => "Invalid or expired token",
             PasswdlessError::UserNotFound => "User not found",
         };
@@ -44,29 +38,23 @@ impl ResponseError for PasswdlessError {
 }
 
 #[derive(Deserialize)]
-struct AddEmailReq {
-    email: String,
-}
-
-#[derive(Deserialize)]
 struct Token {
     token: u32,
 }
 
-#[get("/challenge/email/{user_id}")]
-async fn challenge1(data: web::Data<AppState>, email: web::Path<String>) -> impl Responder {
-    let user = data
-        .auth_service
-        .get_user_by_email(&email.into_inner())
+#[derive(Deserialize)]
+struct Email {
+    email: String,
+}
+
+#[get("/challenge/email")]
+async fn challenge1(data: web::Data<AppState>, email: web::Json<Email>) -> impl Responder {
+    match data
+        .passwdless_service
+        .challenge_by_email(&email.email)
         .await
-        .unwrap();
-    match data.passwdless_service.challenge(user.id).await {
-        Ok((token, link)) => {
-            let emd = EventMetaData::new("auth").with_user_id(user.id);
-            let payload = ChallengeRequested { token, link };
-            let event = Event::new(emd, payload);
-            let _ = event.publish(data.auth_service.es.clone()).await;
-        }
+    {
+        Ok(_) => (),
         Err(e) => return translate_error(e),
     }
     HttpResponse::Created().finish()
@@ -74,18 +62,12 @@ async fn challenge1(data: web::Data<AppState>, email: web::Path<String>) -> impl
 
 #[get("/challenge/username/{username}")]
 async fn challenge2(data: web::Data<AppState>, username: web::Path<String>) -> impl Responder {
-    let user = data
-        .auth_service
-        .get_user_by_username(&username.into_inner())
+    match data
+        .passwdless_service
+        .challenge_by_username(&username.into_inner())
         .await
-        .unwrap();
-    match data.passwdless_service.challenge(user.id).await {
-        Ok((token, link)) => {
-            let emd = EventMetaData::new("auth").with_user_id(user.id);
-            let payload = ChallengeRequested { token, link };
-            let event = Event::new(emd, payload);
-            let _ = event.publish(data.auth_service.es.clone()).await;
-        }
+    {
+        Ok(_) => (),
         Err(e) => return translate_error(e),
     }
     HttpResponse::Created().finish()
@@ -113,7 +95,7 @@ async fn confirm(data: web::Data<AppState>, token: web::Path<String>) -> impl Re
     }
 }
 
-#[get("/confirm_link/{link}")]
+#[post("/confirm_token")]
 async fn confirm_token(data: web::Data<AppState>, token: web::Json<Token>) -> impl Responder {
     let token = token.into_inner();
     let user_id = match data.passwdless_service.confirm_token(token.token).await {
@@ -139,17 +121,8 @@ pub fn config(cfg: &mut ServiceConfig) {
     cfg.service(
         web::scope("")
             .service(confirm)
+            .service(confirm_token)
             .service(challenge1)
             .service(challenge2),
     );
-}
-
-#[derive(Serialize)]
-struct ChallengeRequested {
-    token: u32,
-    link: String,
-}
-
-impl Publishable for ChallengeRequested {
-    const SUBJECT: &'static str = "auth.2fa.challenge.requested";
 }

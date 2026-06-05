@@ -249,10 +249,8 @@ impl AuthService {
             SELECT
                 id          as "id!",
                 user_id     as "user_id!: Uuid",
-                token_hash  as "token_hash!",
                 expires_at  as "expires_at!: chrono::DateTime<chrono::Utc>",
-                used        as "used!",
-                created_at  as "created_at!: chrono::DateTime<chrono::Utc>"
+                used        as "used!" 
             FROM password_resets
             WHERE token_hash = ? AND used = FALSE
             "#,

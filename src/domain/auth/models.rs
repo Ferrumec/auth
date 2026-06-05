@@ -77,12 +77,10 @@ pub struct RefreshTokenRow {
 }
 
 /// A row from the `password_resets` table.
-#[derive(Debug, Clone, sqlx::FromRow)]
+#[derive(sqlx::FromRow)]
 pub struct PasswordReset {
     pub id: String,
     pub user_id: Uuid,
-    pub token_hash: String,
     pub expires_at: DateTime<Utc>,
     pub used: bool,
-    pub created_at: DateTime<Utc>,
 }
