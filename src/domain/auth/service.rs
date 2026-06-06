@@ -99,7 +99,7 @@ impl AuthService {
     /// Hash the password and create a new user row.
     ///
     /// Returns the new user's ID so callers can optionally auto-login.
-    pub async fn register(&self, username: &str, password: &str) -> Result<Uuid, AuthError> {
+    pub async fn register(&self, username: &str, password: &str) -> Result<AuthResult, AuthError> {
         if username.is_empty() || password.is_empty() {
             return Err(AuthError::MissingCredentials);
         }
@@ -121,7 +121,7 @@ impl AuthService {
             Ok(_) => (),
             Err(e) => tracing::error!("Error occured in publishing user creation event: {e}"),
         };
-        Ok(user.id)
+        self.issue_token_pair(user.id, "auth.register").await
     }
 
     // ── Token refresh (with rotation) ─────────────────────────────────────────

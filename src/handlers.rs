@@ -68,8 +68,8 @@ pub async fn register(
     req: web::Json<RegisterRequest>,
 ) -> impl Responder {
     match svc.register(&req.username, &req.password).await {
-        Ok(_user_id) => {
-            HttpResponse::Created().json(ApiResponse::success((), "User registered successfully"))
+        Ok(res) => {
+            HttpResponse::Created().json(ApiResponse::success(res, "User registered successfully"))
         }
         Err(e) => auth_error_to_response(e),
     }
