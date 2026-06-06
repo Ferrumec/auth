@@ -8,6 +8,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use sqlx::{Pool, Sqlite, query};
 use std::sync::Arc;
+use uuid::Uuid;
 
 pub struct AppState {
     pub pool: Pool<sqlx::Sqlite>,
@@ -47,7 +48,7 @@ pub fn random_token() -> String {
 
 #[derive(Deserialize)]
 struct ChannelConfirmed {
-    user: String,
+    user: Uuid,
     address: String,
 }
 
@@ -70,17 +71,19 @@ impl Handler for OnChannelConfirmed {
         .execute(&self.db)
         .await
         {
-            eprintln!("error in saving contact info: {e}");
+            tracing::warn!("error in saving contact info: {e}");
         };
     }
 }
 
 async fn subscribe(es: Arc<dyn EventStream>, db: Pool<Sqlite>) {
-    if let Err(e) = es.subscribe(
-        "contact.channel.confirmed".to_string(),
-        Arc::new(OnChannelConfirmed { db }),
-    )
-    .await{
-eprintln!("Error in subscribing to contact.channel.confirmed: {e} . This is critical!");
-};
+    if let Err(e) = es
+        .subscribe(
+            "contact.channel.confirmed".to_string(),
+            Arc::new(OnChannelConfirmed { db }),
+        )
+        .await
+    {
+        tracing::error!("Error in subscribing to contact.channel.confirmed: {e} . This is critical!");
+    };
 }

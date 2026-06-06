@@ -349,7 +349,7 @@ impl AuthService {
     }
 
     pub async fn get_user_by_email(&self, email: &str) -> Result<User, AuthError> {
-        sqlx::query_as!(
+        match sqlx::query_as!(
             User,
             r#"
             SELECT
@@ -362,9 +362,18 @@ impl AuthService {
             "#,
             email
         )
-        .fetch_one(&self.pool)
+        .fetch_optional(&self.pool)
         .await
-        .map_err(|_| AuthError::InvalidCredentials) // mask whether user exists
+        {
+            Ok(r) => match r {
+                Some(r) => Ok(r),
+                None => Err(AuthError::InvalidCredentials),
+            },
+            Err(e) => {
+                tracing::warn!("Error in getting user by email: {e}");
+                Err(AuthError::Database(e))
+            }
+        }
     }
 
     async fn get_user_by_id(&self, id: &Uuid) -> Result<User, AuthError> {
