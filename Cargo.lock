@@ -193,9 +193,9 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
- "ferrumec",
+ "ferrumec 0.1.0 (git+https://github.com/Austin-rgb/ferrumec)",
  "futures-util",
- "jsonwebtoken 9.3.1",
+ "jsonwebtoken",
  "reqwest",
  "serde",
  "uuid",
@@ -378,7 +378,6 @@ dependencies = [
  "e2schema",
  "event-stream",
  "futures",
- "jsonwebtoken 10.3.0",
  "moka",
  "rand 0.8.6",
  "serde",
@@ -386,11 +385,9 @@ dependencies = [
  "sha2",
  "sqlx",
  "thiserror 1.0.69",
- "tokio",
  "tracing",
  "url",
  "uuid",
- "validator",
  "webauthn-rs",
 ]
 
@@ -1038,7 +1035,7 @@ dependencies = [
  "async-nats",
  "async-trait",
  "bytes",
- "ferrumec",
+ "ferrumec 0.1.0",
  "futures",
  "jiff",
  "serde",
@@ -1059,6 +1056,20 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "serde",
+]
+
+[[package]]
+name = "ferrumec"
+version = "0.1.0"
+source = "git+https://github.com/Austin-rgb/ferrumec#b504a3f627c93eb4c07ac40aae7ab87fc0194c06"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "event-stream",
+ "futures-util",
+ "libsigners",
+ "serde",
+ "sqlx",
 ]
 
 [[package]]
@@ -1836,22 +1847,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "jsonwebtoken"
-version = "10.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0529410abe238729a60b108898784df8984c87f6054c9c4fcacc47e4803c1ce1"
-dependencies = [
- "base64 0.22.1",
- "getrandom 0.2.17",
- "js-sys",
- "pem",
- "serde",
- "serde_json",
- "signature",
- "simple_asn1",
-]
-
-[[package]]
 name = "language-tags"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1894,6 +1889,18 @@ dependencies = [
  "libc",
  "plain",
  "redox_syscall 0.7.4",
+]
+
+[[package]]
+name = "libsigners"
+version = "0.1.0"
+source = "git+https://github.com/Austin-rgb/libsigners#da9040b825b0af8f15650f84c1aabee0825e3eb8"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "jsonwebtoken",
+ "serde",
+ "uuid",
 ]
 
 [[package]]
@@ -3719,21 +3726,6 @@ dependencies = [
  "js-sys",
  "serde_core",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "validator"
-version = "0.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43fb22e1a008ece370ce08a3e9e4447a910e92621bb49b85d6e48a45397e7cfa"
-dependencies = [
- "idna",
- "once_cell",
- "regex",
- "serde",
- "serde_derive",
- "serde_json",
- "url",
 ]
 
 [[package]]
