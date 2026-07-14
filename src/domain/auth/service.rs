@@ -385,7 +385,7 @@ impl AuthService {
         }
     }
 
-    async fn get_user_by_id(&self, id: &Uuid) -> Result<User, AuthError> {
+    pub async fn get_user_by_id(&self, id: &Uuid) -> Result<User, AuthError> {
         sqlx::query_as!(
             User,
             r#"

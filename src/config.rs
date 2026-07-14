@@ -1,9 +1,6 @@
-use crate::{
-    auth2::AppState,
-    handlers, //passkey,
-    passwdless::config,
-    user_id::username2userid,
-};
+use crate::{auth2::AppState, handlers, passwdless::config, user_id::username2userid};
+#[cfg(feature = "passkey")]
+use crate::passkey;
 use actix_web::web::{self, Data, ServiceConfig};
 use actixutils::{Identity, Sign, Validate};
 use typed_eventbus::EventStream;
@@ -61,38 +58,48 @@ impl AuthModule {
         }
     }
     pub fn config(&self, cfg: &mut ServiceConfig, namespace: &str) {
-        cfg.service(
-            web::scope(namespace)
-                .app_data(Data::new(self.state.auth_service.clone()))
-                .service(username2userid)
-                //.service(passkey::routes("/passkey"))
-                .service(
-                    web::scope("/auth")
-                        .route("/register", web::post().to(handlers::register))
-                        .route("/login/email", web::post().to(handlers::login))
-                        .route("/login/username", web::post().to(handlers::username_login))
-                        .route("/refresh", web::post().to(handlers::refresh))
-                        .route("/logout", web::post().to(handlers::logout))
-                        .route(
-                            "/request_password_reset",
-                            web::post().to(handlers::request_password_reset),
-                        )
-                        .route(
-                            "/confirm_password_reset",
-                            web::post().to(handlers::confirm_password_reset),
-                        ),
-                )
-                // 🔐 PROTECTED ROUTES
-                .service(
-                    web::scope("/me")
-                        .route("/account", web::get().to(handlers::protected))
-                        .route(
-                            "/change_password",
-                            web::post().to(handlers::change_password),
-                        ),
-                )
-                .service(web::scope("/passwordless").configure(config)),
-            //.configure(pubkey::configure),
-        );
+        let mut scope = web::scope(namespace)
+            // `username2userid` and the `/passwordless` handlers extract
+            // `web::Data<AppState>` directly, so the shared state needs to
+            // be registered here too, not just the `AuthService` slice of it.
+            .app_data(self.state.clone())
+            .app_data(Data::new(self.state.auth_service.clone()))
+            .service(username2userid)
+            .service(
+                web::scope("/auth")
+                    .route("/register", web::post().to(handlers::register))
+                    .route("/login/email", web::post().to(handlers::login))
+                    .route("/login/username", web::post().to(handlers::username_login))
+                    .route("/refresh", web::post().to(handlers::refresh))
+                    .route("/logout", web::post().to(handlers::logout))
+                    .route(
+                        "/request_password_reset",
+                        web::post().to(handlers::request_password_reset),
+                    )
+                    .route(
+                        "/confirm_password_reset",
+                        web::post().to(handlers::confirm_password_reset),
+                    ),
+            )
+            // 🔐 PROTECTED ROUTES
+            .service(
+                web::scope("/me")
+                    .route("/account", web::get().to(handlers::protected))
+                    .route(
+                        "/change_password",
+                        web::post().to(handlers::change_password),
+                    ),
+            )
+            .service(web::scope("/passwordless").configure(config));
+
+        #[cfg(feature = "passkey")]
+        {
+            // 🔐 register/list/remove are protected by the Auth<Identity>
+            // extractor inside the handlers themselves; login/start and
+            // login/finish are intentionally public (no session yet).
+            scope = scope.service(passkey::routes("/passkey"));
+        }
+
+        cfg.service(scope);
     }
 }

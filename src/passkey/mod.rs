@@ -1,7 +1,7 @@
 mod auth;
-mod error;
-mod models;
-mod state;
+pub mod error;
+pub mod models;
+pub mod repository;
+pub mod state;
 
-use crate::lock;
 pub use auth::routes;

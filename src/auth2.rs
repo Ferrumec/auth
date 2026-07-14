@@ -14,6 +14,11 @@ pub struct AppState {
     pub validator: Arc<dyn Validate<Identity>>,
     pub passwdless_service: PasswdlessService,
     pub auth_service: AuthService,
+    /// WebAuthn config + in-flight ceremony state for the passkey module.
+    /// Built from `WEBAUTHN_RP_ID` / `WEBAUTHN_RP_ORIGIN` (see
+    /// `passkey::state::AppState::from_env`).
+    #[cfg(feature = "passkey")]
+    pub passkey: crate::passkey::state::AppState,
 }
 
 impl AppState {
@@ -31,6 +36,8 @@ impl AppState {
             validator,
             passwdless_service,
             auth_service,
+            #[cfg(feature = "passkey")]
+            passkey: crate::passkey::state::AppState::from_env(),
         }
     }
 }

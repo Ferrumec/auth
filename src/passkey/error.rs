@@ -15,25 +15,13 @@ impl ErrorResponse {
         HttpResponse::NotFound().json(Self { error: msg.into() })
     }
 
+    pub fn unauthorized(msg: impl Into<String>) -> HttpResponse {
+        HttpResponse::Unauthorized().json(Self { error: msg.into() })
+    }
+
     pub fn internal() -> HttpResponse {
         HttpResponse::InternalServerError().json(Self {
             error: "Internal server error".to_string(),
         })
     }
-}
-
-/// Unwrap a Mutex lock or return a 500.
-/// Usage: `let guard = lock!(mutex, return_expr)` — but we use a macro so
-/// the early-return happens in the *caller's* function.
-#[macro_export]
-macro_rules! lock {
-    ($mutex:expr) => {
-        match $mutex.lock() {
-            Ok(g) => g,
-            Err(e) => {
-                tracing::warn!("Mutex poisoned: {}", e);
-                return $crate::passkey::error::ErrorResponse::internal();
-            }
-        }
-    };
 }
