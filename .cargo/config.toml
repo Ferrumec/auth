@@ -1,8 +1,1 @@
-[patch."https://github.com/Austin-rgb/event-stream"]
-typed-eventbus = { path = "../event-stream" }
 
-[patch."https://github.com/Austin-rgb/actixutils"]
-actixutils = {path="../actixutils"}
-
-[patch."https://github.com/Austin-rgb/e2schema"]
-e2schema = {path="../e2schema"}

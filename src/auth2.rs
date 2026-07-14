@@ -3,9 +3,8 @@ use crate::domain::auth::token::generate_raw_token;
 use crate::passwdless::PasswdlessService;
 use actixutils::{Identity, Provider};
 use actixutils::{Sign, Validate};
-use typed_eventbus::{EventStream, Handler};
+use typed_eventbus::{EventStream, Subscribable, Subscriber, Event};
 use serde::Deserialize;
-use serde_json::Value;
 use sqlx::{Pool, Sqlite, query};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -50,6 +49,7 @@ pub fn random_token() -> String {
 struct ChannelConfirmed {
     user: Uuid,
     address: String,
+    channel: String
 }
 
 struct OnChannelConfirmed {
@@ -57,16 +57,18 @@ struct OnChannelConfirmed {
 }
 
 #[async_trait::async_trait]
-impl Handler for OnChannelConfirmed {
-    async fn handle(&self, _subject: String, message: Vec<u8>) {
-        let message = String::from_utf8(message).unwrap();
-        let event: Value = serde_json::from_str(&message).unwrap();
-        let payload = event.get("payload").unwrap();
-        let event: ChannelConfirmed = serde_json::from_value(payload.clone()).unwrap();
+impl Subscriber<ChannelConfirmed> for OnChannelConfirmed {
+    async fn on_message(&self, event:Event<ChannelConfirmed>, _subject: &str) {
+        // this is to ensure that email, or any other primary contact info, can only be confirme through a specific channel
+        // set to console for development purposes only, 
+        // TODO please change to a better channel in production
+        if event.payload.channel!="console".to_string(){
+            return
+        }
         if let Err(e) = query!(
             "UPDATE users SET email = ? WHERE id = ?",
-            event.address,
-            event.user,
+            event.payload.address,
+            event.payload.user,
         )
         .execute(&self.db)
         .await
@@ -76,12 +78,14 @@ impl Handler for OnChannelConfirmed {
     }
 }
 
+impl Subscribable for ChannelConfirmed{
+    const SUBJECT: &'static str = "contact.channel.confirmed";
+}
+
 async fn subscribe(es: Arc<dyn EventStream>, db: Pool<Sqlite>) {
-    if let Err(e) = es
-        .subscribe(
-            "contact.channel.confirmed".to_string(),
-            Arc::new(OnChannelConfirmed { db }),
-        )
+    let subscriber = OnChannelConfirmed { db };
+    if let Err(e) = subscriber
+        .subscribe(es.clone())
         .await
     {
         tracing::error!("Error in subscribing to contact.channel.confirmed: {e} . This is critical!");

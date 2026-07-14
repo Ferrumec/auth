@@ -77,7 +77,7 @@ pub async fn register(
 
 pub async fn login(svc: web::Data<AuthService>, req: web::Json<LoginRequest>) -> impl Responder {
     let cmd = PasswordLoginCmd {
-        username: req.username.clone(),
+        username: req.identifier.clone(),
         password: req.password.clone(),
     };
     match svc.password_login(cmd).await {
@@ -97,7 +97,7 @@ pub async fn username_login(
     req: web::Json<LoginRequest>,
 ) -> impl Responder {
     let cmd = PasswordLoginCmd {
-        username: req.username.clone(),
+        username: req.identifier.clone(),
         password: req.password.clone(),
     };
     match svc.username_login(cmd).await {

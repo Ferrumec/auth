@@ -18,9 +18,7 @@ sha2 = "0.10.9"
 futures = "0.3.31"
 moka = { version = "0.12.13", features = ["future"] }
 actixutils = { version = "0.1.1", features = ["es"] }
-url = "2.5.8"
 typed-eventbus = "0.2.0"
-e2schema = {git = "https://github.com/Austin-rgb/e2schema"}
 webauthn-rs = {version="0.5.4", optional=true}
 tracing = "0.1.44"
 anyhow = "1.0.102"
