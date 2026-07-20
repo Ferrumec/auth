@@ -2,7 +2,7 @@
 
 use actix_web::cookie::{Cookie, SameSite};
 use actix_web::{HttpResponse, Responder, web};
-use actixutils::{Auth, Identity};
+use actixutils::{Jwt as Auth, Identity};
 use uuid::Uuid;
 
 use crate::domain::auth::{

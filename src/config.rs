@@ -58,7 +58,7 @@ impl AuthModule {
         }
     }
     pub fn config(&self, cfg: &mut ServiceConfig, namespace: &str) {
-        let mut scope = web::scope(namespace)
+        let scope = web::scope(namespace)
             // `username2userid` and the `/passwordless` handlers extract
             // `web::Data<AppState>` directly, so the shared state needs to
             // be registered here too, not just the `AuthService` slice of it.
