@@ -8,7 +8,7 @@ actix-web = "4.4"
 serde = { version = "1", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
 bcrypt = "0.15"
-sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio-native-tls", "chrono", "migrate", "uuid"] }
+sqlx = { version = "0.8.6", features = ["postgres", "runtime-tokio-native-tls", "chrono", "migrate", "uuid"] }
 thiserror = "1.0"
 uuid = { version = "1.7", features = ["v4", "serde"] }
 rand = "0.8"

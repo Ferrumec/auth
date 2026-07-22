@@ -9,12 +9,12 @@ pub async fn username2userid(
 ) -> impl Responder {
     let username = username.into_inner();
 
-    let result = sqlx::query_scalar!("SELECT id FROM users WHERE username = ?", username)
+    let result = sqlx::query_scalar!("SELECT id FROM users WHERE username = $1", username)
         .fetch_optional(&state.pool)
         .await;
 
     match result {
-        Ok(Some(id)) => HttpResponse::Ok().body(id.unwrap()),
+        Ok(Some(id)) => HttpResponse::Ok().body(id),
         Ok(None) => HttpResponse::NotFound().finish(),
         Err(_) => HttpResponse::NotFound().finish(),
     }

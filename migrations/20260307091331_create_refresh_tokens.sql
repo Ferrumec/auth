@@ -4,9 +4,9 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
                 user_id TEXT NOT NULL,                
 token_hash  TEXT UNIQUE NOT NULL,   
                 issuer TEXT NOT NULL,
-                expires_at DATETIME NOT NULL,
+                expires_at TIMESTAMPTZ NOT NULL,
                 revoked BOOLEAN DEFAULT FALSE,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             );
 

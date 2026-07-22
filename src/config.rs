@@ -4,7 +4,7 @@ use crate::passkey;
 use actix_web::web::{self, Data, ServiceConfig};
 use actixutils::{Identity, Sign, Validate};
 use typed_eventbus::EventStream;
-use sqlx::{Error, Pool, Sqlite};
+use sqlx::{Error, Pool, Postgres};
 use std::{env::VarError, sync::Arc};
 
 #[derive(Clone)]
@@ -47,7 +47,7 @@ impl Validate<Identity> for AppState {
 
 impl AuthModule {
     pub async fn new(
-        pool: Pool<Sqlite>,
+        pool: Pool<Postgres>,
         signer: Arc<dyn Sign<Identity>>,
         validator: Arc<dyn Validate<Identity>>,
         es: Arc<dyn EventStream>,

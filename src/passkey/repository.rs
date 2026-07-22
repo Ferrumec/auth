@@ -8,7 +8,7 @@
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
-use sqlx::{Pool, Sqlite};
+use sqlx::{Pool, Postgres};
 use thiserror::Error;
 use uuid::Uuid;
 use webauthn_rs::prelude::Passkey;
@@ -37,7 +37,7 @@ fn credential_id_b64(passkey: &Passkey) -> String {
 
 /// Persist a newly registered credential for a user.
 pub async fn insert_credential(
-    pool: &Pool<Sqlite>,
+    pool: &Pool<Postgres>,
     user_id: Uuid,
     passkey: &Passkey,
     label: Option<&str>,
@@ -69,11 +69,11 @@ pub async fn insert_credential(
 /// WebAuthn "allow list" at login time and to exclude already-registered
 /// authenticators when starting a new registration.
 pub async fn credentials_for_user(
-    pool: &Pool<Sqlite>,
+    pool: &Pool<Postgres>,
     user_id: Uuid,
 ) -> Result<Vec<Passkey>, RepoError> {
     let rows = sqlx::query!(
-        r#"SELECT passkey_data as "passkey_data!" FROM passkey_credentials WHERE user_id = ?"#,
+        r#"SELECT passkey_data as "passkey_data!" FROM passkey_credentials WHERE user_id = $1"#,
         user_id
     )
     .fetch_all(pool)
@@ -87,13 +87,13 @@ pub async fn credentials_for_user(
 /// Re-persist a credential after a successful login. WebAuthn tracks a
 /// per-credential signature counter so cloned authenticators can be
 /// detected; this must be saved back or that protection is lost.
-pub async fn update_credential(pool: &Pool<Sqlite>, passkey: &Passkey) -> Result<(), RepoError> {
+pub async fn update_credential(pool: &Pool<Postgres>, passkey: &Passkey) -> Result<(), RepoError> {
     let credential_id = credential_id_b64(passkey);
     let data = serde_json::to_string(passkey).map_err(|_| RepoError::Corrupt)?;
     let now = Utc::now();
 
     sqlx::query!(
-        "UPDATE passkey_credentials SET passkey_data = ?, last_used_at = ? WHERE credential_id = ?",
+        "UPDATE passkey_credentials SET passkey_data = $1, last_used_at = $1 WHERE credential_id = $1",
         data,
         now,
         credential_id
@@ -107,7 +107,7 @@ pub async fn update_credential(pool: &Pool<Sqlite>, passkey: &Passkey) -> Result
 /// List a user's registered passkeys (metadata only) for an account
 /// settings / "manage your passkeys" page.
 pub async fn list_for_user(
-    pool: &Pool<Sqlite>,
+    pool: &Pool<Postgres>,
     user_id: Uuid,
 ) -> Result<Vec<CredentialSummary>, RepoError> {
     let rows = sqlx::query!(
@@ -118,7 +118,7 @@ pub async fn list_for_user(
             created_at    as "created_at!: DateTime<Utc>",
             last_used_at  as "last_used_at: DateTime<Utc>"
         FROM passkey_credentials
-        WHERE user_id = ?
+        WHERE user_id = $1
         ORDER BY created_at DESC
         "#,
         user_id
@@ -141,12 +141,12 @@ pub async fn list_for_user(
 /// user can never delete someone else's credential. Returns `true` if a
 /// row was actually deleted.
 pub async fn delete_credential(
-    pool: &Pool<Sqlite>,
+    pool: &Pool<Postgres>,
     user_id: Uuid,
     credential_row_id: Uuid,
 ) -> Result<bool, RepoError> {
     let result = sqlx::query!(
-        "DELETE FROM passkey_credentials WHERE id = ? AND user_id = ?",
+        "DELETE FROM passkey_credentials WHERE id = $1 AND user_id = $1",
         credential_row_id,
         user_id
     )

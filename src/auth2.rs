@@ -5,12 +5,12 @@ use actixutils::{Identity, Provider};
 use actixutils::{Sign, Validate};
 use typed_eventbus::{EventStream, Subscribable, Subscriber, Event};
 use serde::Deserialize;
-use sqlx::{Pool, Sqlite, query};
+use sqlx::{Pool, Postgres, query};
 use std::sync::Arc;
 use uuid::Uuid;
 
 pub struct AppState {
-    pub pool: Pool<sqlx::Sqlite>,
+    pub pool: Pool<sqlx::Postgres>,
     pub validator: Arc<dyn Validate<Identity>>,
     pub passwdless_service: PasswdlessService,
     pub auth_service: AuthService,
@@ -23,7 +23,7 @@ pub struct AppState {
 
 impl AppState {
     pub async fn new(
-        pool: Pool<sqlx::Sqlite>,
+        pool: Pool<sqlx::Postgres>,
         signer: Arc<dyn Sign<Identity>>,
         validator: Arc<dyn Validate<Identity>>,
         es: Arc<dyn EventStream>,
@@ -60,7 +60,7 @@ struct ChannelConfirmed {
 }
 
 struct OnChannelConfirmed {
-    db: Pool<Sqlite>,
+    db: Pool<Postgres>,
 }
 
 #[async_trait::async_trait]
@@ -73,9 +73,9 @@ impl Subscriber<ChannelConfirmed> for OnChannelConfirmed {
             return
         }
         if let Err(e) = query!(
-            "UPDATE users SET email = ? WHERE id = ?",
+            "UPDATE users SET email = $1 WHERE id = $2",
             event.payload.address,
-            event.payload.user,
+            event.payload.user.to_string(),
         )
         .execute(&self.db)
         .await
@@ -89,7 +89,7 @@ impl Subscribable for ChannelConfirmed{
     const SUBJECT: &'static str = "contact.channel.confirmed";
 }
 
-async fn subscribe(es: Arc<dyn EventStream>, db: Pool<Sqlite>) {
+async fn subscribe(es: Arc<dyn EventStream>, db: Pool<Postgres>) {
     let subscriber = OnChannelConfirmed { db };
     if let Err(e) = subscriber
         .subscribe(es.clone())

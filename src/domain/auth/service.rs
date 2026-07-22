@@ -17,7 +17,7 @@ use chrono::Utc;
 use typed_eventbus::{Event, Publishable};
 use typed_eventbus::EventStream;
 use serde::Serialize;
-use sqlx::{Pool, Sqlite};
+use sqlx::{Pool, Postgres};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -44,7 +44,7 @@ impl Publishable for UserCreated{
 /// application startup and shared via `Arc` or Actix `web::Data`.
 #[derive(Clone)]
 pub struct AuthService {
-    pool: Pool<Sqlite>,
+    pool: Pool<Postgres>,
     signer: Arc<dyn Sign<Identity>>,
     pub es: Arc<dyn EventStream>,
     aud: Vec<String>,
@@ -52,7 +52,7 @@ pub struct AuthService {
 
 impl AuthService {
     pub fn new(
-        pool: Pool<Sqlite>,
+        pool: Pool<Postgres>,
         signer: Arc<dyn Sign<Identity>>,
         es: Arc<dyn EventStream>,
     ) -> Self {
@@ -214,8 +214,8 @@ impl AuthService {
     pub async fn request_password_reset(&self, cmd: RequestPasswordResetCmd) {
         // Look up by email column in the `emails` table.
         let user_id: Option<String> =
-            sqlx::query_scalar!("SELECT id FROM users WHERE email = ?", cmd.email)
-                .fetch_one(&self.pool)
+            sqlx::query_scalar!("SELECT id FROM users WHERE email = $1", cmd.email)
+                .fetch_optional(&self.pool)
                 .await
                 .unwrap_or(None);
 
@@ -230,7 +230,7 @@ impl AuthService {
         let id = Uuid::new_v4().to_string();
 
         let _ = sqlx::query!(
-            "INSERT INTO password_resets (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)",
+            "INSERT INTO password_resets (id, user_id, token_hash, expires_at) VALUES ($1, $2, $3, $4)",
             id,
             user_id,
             hash,
@@ -261,7 +261,7 @@ impl AuthService {
                 expires_at  as "expires_at!: chrono::DateTime<chrono::Utc>",
                 used        as "used!" 
             FROM password_resets
-            WHERE token_hash = ? AND used = FALSE
+            WHERE token_hash = $1 AND used = FALSE
             "#,
             token_hash
         )
@@ -277,7 +277,7 @@ impl AuthService {
         self.update_password(&reset.user_id, &new_hash).await?;
 
         sqlx::query!(
-            "UPDATE password_resets SET used = TRUE WHERE id = ?",
+            "UPDATE password_resets SET used = TRUE WHERE id = $1",
             reset.id
         )
         .execute(&self.pool)
@@ -319,10 +319,10 @@ impl AuthService {
         sqlx::query!(
             r#"
             INSERT INTO refresh_tokens (id, user_id, token_hash, issuer, expires_at, revoked, created_at)
-            VALUES (?, ?, ?, ?, ?, FALSE, ?)
+            VALUES ($1, $2, $3, $4, $5, FALSE, $6)
             "#,
             id,
-            user_id,
+            user_id.to_string(),
             token_hash,
             issuer,
             expires_at,
@@ -348,7 +348,7 @@ impl AuthService {
                 password_hash as "password_hash!",
                 created_at  as "created_at!: chrono::DateTime<chrono::Utc>",
                 updated_at  as "updated_at!: chrono::DateTime<chrono::Utc>"
-            FROM users WHERE username = ?
+            FROM users WHERE username = $1
             "#,
             username
         )
@@ -367,7 +367,7 @@ impl AuthService {
                 password_hash as "password_hash!",
                 created_at  as "created_at!: chrono::DateTime<chrono::Utc>",
                 updated_at  as "updated_at!: chrono::DateTime<chrono::Utc>"
-            FROM users WHERE email = ?
+            FROM users WHERE email = $1
             "#,
             email
         )
@@ -395,9 +395,9 @@ impl AuthService {
                 password_hash as "password_hash!",
                 created_at  as "created_at!: chrono::DateTime<chrono::Utc>",
                 updated_at  as "updated_at!: chrono::DateTime<chrono::Utc>"
-            FROM users WHERE id = ?
+            FROM users WHERE id = $1
             "#,
-            id
+            id.to_string()
         )
         .fetch_one(&self.pool)
         .await
@@ -405,14 +405,14 @@ impl AuthService {
     }
 
     async fn create_user(&self, username: &str, password_hash: &str) -> Result<User, AuthError> {
-        let id = Uuid::new_v4();
+        let id = Uuid::new_v4().to_string();
         let now = Utc::now();
 
         sqlx::query_as!(
             User,
             r#"
             INSERT INTO users (id, username, password_hash, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES ($1, $2, $3, $4, $5)
             RETURNING
                 id          as "id!: Uuid",
                 username    as "username!",
@@ -446,7 +446,7 @@ impl AuthService {
                 revoked     as "revoked!",
                 created_at  as "created_at!: chrono::DateTime<chrono::Utc>"
             FROM refresh_tokens
-            WHERE token_hash = ?
+            WHERE token_hash = $1
             "#,
             hash
         )
@@ -463,7 +463,7 @@ impl AuthService {
 
     /// Hard-delete a single refresh token by hash (rotation).
     async fn delete_refresh_token_by_hash(&self, hash: &str) -> Result<(), AuthError> {
-        sqlx::query!("DELETE FROM refresh_tokens WHERE token_hash = ?", hash)
+        sqlx::query!("DELETE FROM refresh_tokens WHERE token_hash = $1", hash)
             .execute(&self.pool)
             .await?;
         Ok(())
@@ -472,7 +472,7 @@ impl AuthService {
     /// Soft-revoke a single refresh token (logout path).
     async fn revoke_refresh_token_by_hash(&self, hash: &str) -> Result<(), AuthError> {
         let result = sqlx::query!(
-            "UPDATE refresh_tokens SET revoked = TRUE WHERE token_hash = ?",
+            "UPDATE refresh_tokens SET revoked = TRUE WHERE token_hash = $1",
             hash
         )
         .execute(&self.pool)
@@ -487,8 +487,8 @@ impl AuthService {
     /// Soft-revoke all tokens for a user (password change, reset).
     async fn revoke_all_user_tokens(&self, user_id: &Uuid) -> Result<(), AuthError> {
         sqlx::query!(
-            "UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = ?",
-            user_id
+            "UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = $1",
+            user_id.to_string()
         )
         .execute(&self.pool)
         .await?;
@@ -498,10 +498,10 @@ impl AuthService {
     async fn update_password(&self, user_id: &Uuid, hash: &str) -> Result<(), AuthError> {
         let now = Utc::now();
         sqlx::query!(
-            "UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?",
+            "UPDATE users SET password_hash = $1, updated_at = $2 WHERE id = $3",
             hash,
             now,
-            user_id
+            user_id.to_string()
         )
         .execute(&self.pool)
         .await?;
