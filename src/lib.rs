@@ -8,3 +8,4 @@ mod passkey;
 mod passwdless;
 mod user_id;
 pub use config::{AuthModule as Module, SetupError};
+mod admin;

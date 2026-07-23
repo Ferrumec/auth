@@ -7,6 +7,9 @@ use typed_eventbus::EventStream;
 use sqlx::{Error, Pool, Postgres};
 use std::{env::VarError, sync::Arc};
 
+use actixutils::viewset::ViewSet;
+use crate::admin::create_viewset;
+
 #[derive(Clone)]
 pub struct AuthModule {
     state: web::Data<AppState>,
@@ -65,6 +68,7 @@ impl AuthModule {
             .app_data(self.state.clone())
             .app_data(Data::new(self.state.auth_service.clone()))
             .service(username2userid)
+        .service(web::scope("/admin").configure(|cfg|create_viewset().configure(cfg,"product")))
             .service(
                 web::scope("/auth")
                     .route("/register", web::post().to(handlers::register))
