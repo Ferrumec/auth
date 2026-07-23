@@ -68,7 +68,7 @@ impl AuthModule {
             .app_data(self.state.clone())
             .app_data(Data::new(self.state.auth_service.clone()))
             .service(username2userid)
-        .service(web::scope("/admin").configure(|cfg|create_viewset().configure(cfg,"product")))
+        .service(web::scope("/admin").configure(|cfg|create_viewset(self.state.pool.clone()).configure(cfg,"product")))
             .service(
                 web::scope("/auth")
                     .route("/register", web::post().to(handlers::register))

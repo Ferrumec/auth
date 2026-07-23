@@ -1,7 +1,7 @@
 use actixutils::viewset::*;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use sqlx::FromRow;
+use sqlx::{FromRow,PgPool};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -61,14 +61,27 @@ impl From<User> for UserDto {
 }
 
 
-pub struct UserRepository;
+pub struct UserRepository{
+    db:PgPool
+}
 
+#[async_trait::async_trait]
 impl Repository for UserRepository {
     type Entity = User;
+    fn database(&self)->&PgPool{
+        &self.db
+    }
 }
 
 pub struct UserService {
     repo: UserRepository,
+}
+
+impl UserService{
+    fn new(db:PgPool)->Self{
+        let repo = UserRepository{db};
+        Self{repo}
+    }
 }
 
 #[async_trait::async_trait]
@@ -83,7 +96,6 @@ impl Service for UserService {
     // Only override the one hook we actually need.
     async fn before_create(
         &self,
-        _ctx: &RequestContext<()>,
         _dto: CreateUser,
     ) -> Result<CreateUser, ApiError> {
         return Err(ApiError::Validation("manual create not allowed, use registration endpoint".into()));
@@ -103,8 +115,7 @@ impl ViewSet for UserViewSet {
     }
 }
 
-pub fn create_viewset()->Arc<UserViewSet>{
-    let repo = UserRepository{};
-    let service = UserService{repo};
+pub fn create_viewset(db:PgPool)->Arc<UserViewSet>{
+    let service = UserService::new(db);
    Arc::new (UserViewSet{service})
 }
