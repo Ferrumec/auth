@@ -1,12 +1,12 @@
 use actixutils::viewset::*;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow,PgPool};
+use sqlx::{FromRow,PgPool, Postgres, Transaction};
 use std::sync::Arc;
 use uuid::Uuid;
 
 
-#[derive(Entity, FromRow, Serialize)]
+#[derive(Entity, FromRow, Serialize, Clone)]
 #[entity(
     table = "users",
     create = "CreateUser",
@@ -61,17 +61,7 @@ impl From<User> for UserDto {
 }
 
 
-pub struct UserRepository{
-    db:PgPool
-}
-
-#[async_trait::async_trait]
-impl Repository for UserRepository {
-    type Entity = User;
-    fn database(&self)->&PgPool{
-        &self.db
-    }
-}
+type UserRepository = DefaultRepo<User>;
 
 pub struct UserService {
     repo: UserRepository,
@@ -79,7 +69,7 @@ pub struct UserService {
 
 impl UserService{
     fn new(db:PgPool)->Self{
-        let repo = UserRepository{db};
+        let repo:UserRepository= db.into();
         Self{repo}
     }
 }
@@ -87,8 +77,7 @@ impl UserService{
 #[async_trait::async_trait]
 impl Service for UserService {
     type Repository = UserRepository;
-    type User = (); // no auth wiring in this minimal example
-
+    
     fn repository(&self) -> &Self::Repository {
         &self.repo
     }
@@ -96,6 +85,7 @@ impl Service for UserService {
     // Only override the one hook we actually need.
     async fn before_create(
         &self,
+         _tx: &mut Transaction<'_, Postgres>,
         _dto: CreateUser,
     ) -> Result<CreateUser, ApiError> {
         return Err(ApiError::Validation("manual create not allowed, use registration endpoint".into()));
@@ -103,19 +93,9 @@ impl Service for UserService {
 }
 
 
-pub struct UserViewSet {
-    service: UserService,
-}
-
-impl ViewSet for UserViewSet {
-    type Service = UserService;
-
-    fn service(&self) -> &Self::Service {
-        &self.service
-    }
-}
+pub type UserViewSet = DefaultViewSet<UserService>;
 
 pub fn create_viewset(db:PgPool)->Arc<UserViewSet>{
     let service = UserService::new(db);
-   Arc::new (UserViewSet{service})
+   Arc::new (service.into())
 }
