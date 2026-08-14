@@ -1,5 +1,3 @@
-//! HTTP handlers.
-
 use crate::domain::auth::{
     AuthService,
     models::{AuthResult, LogoutCmd, RefreshCmd},
@@ -18,7 +16,6 @@ use crate::models::{
 use actix_web::cookie::{Cookie, SameSite};
 use actix_web::{HttpResponse, Responder, web};
 use actixutils::{Identity, Jwt as Auth};
-use uuid::Uuid;
 
 // ── Error → HTTP ──────────────────────────────────────────────────────────────
 
@@ -156,11 +153,10 @@ pub async fn logout(svc: web::Data<AuthService>, req: web::Json<LogoutRequest>) 
 
 pub async fn change_password(
     svc: web::Data<UserService>,
-    // The user_id comes from a validated JWT via your existing middleware.
-    user_id: web::Path<Uuid>,
+    Auth(user): Auth<Identity>,
     req: web::Json<ChangePasswordRequest>,
 ) -> impl Responder {
-    let user_id = user_id.into_inner();
+    let user_id = user.sub;
     let cmd = ChangePasswordCmd {
         user_id,
         current_password: req.current_password.clone(),
@@ -191,6 +187,7 @@ pub async fn request_password_reset(
 
 pub async fn confirm_password_reset(
     svc: web::Data<UserService>,
+    jwt: web::Data<AuthService>,
     req: web::Json<PasswordResetConfirmRequest>,
 ) -> impl Responder {
     let cmd = ConfirmPasswordResetCmd {
@@ -198,7 +195,10 @@ pub async fn confirm_password_reset(
         new_password: req.new_password.clone(),
     };
     match svc.confirm_password_reset(cmd).await {
-        Ok(()) => HttpResponse::Ok().json(ApiResponse::success((), "Password reset successful")),
+        Ok(user_id) => match jwt.revoke_all_user_tokens(&user_id).await {
+            Ok(_) => HttpResponse::Ok().json(ApiResponse::success((), "Password reset successful")),
+            Err(e) => auth_error_to_response(e),
+        },
         Err(e) => auth_error_to_response(e),
     }
 }

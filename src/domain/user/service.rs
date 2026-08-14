@@ -176,7 +176,7 @@ impl UserService {
     pub async fn confirm_password_reset(
         &self,
         cmd: ConfirmPasswordResetCmd,
-    ) -> Result<(), AuthError> {
+    ) -> Result<Uuid, AuthError> {
         let token_hash = hash_token(&cmd.token);
 
         let reset = sqlx::query_as!(
@@ -209,7 +209,7 @@ impl UserService {
         )
         .execute(&self.pool)
         .await?;
-        Ok(())
+        Ok(reset.user_id)
     }
 
     pub async fn get_user_by_username(&self, username: &str) -> Result<User, AuthError> {

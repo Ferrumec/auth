@@ -210,7 +210,7 @@ impl AuthService {
     }
 
     /// Soft-revoke all tokens for a user (password change, reset).
-    async fn revoke_all_user_tokens(&self, user_id: &Uuid) -> Result<(), AuthError> {
+    pub async fn revoke_all_user_tokens(&self, user_id: &Uuid) -> Result<(), AuthError> {
         sqlx::query!(
             "UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = $1",
             user_id.to_string()
