@@ -34,7 +34,11 @@ pub async fn start(state: web::Data<AppState>, req: web::Json<UsernameRequest>) 
         return ErrorResponse::bad_request("No passkeys registered for this account");
     }
 
-    let (options, auth_state) = match state.passkey.webauthn.start_passkey_authentication(&credentials) {
+    let (options, auth_state) = match state
+        .passkey
+        .webauthn
+        .start_passkey_authentication(&credentials)
+    {
         Ok(r) => r,
         Err(e) => {
             tracing::warn!("WebAuthn start_passkey_authentication: {}", e);
@@ -97,7 +101,9 @@ pub async fn finish(
             {
                 if let Some(true) = cred.update_credential(&result) {
                     if let Err(e) = repository::update_credential(&state.pool, cred).await {
-                        tracing::warn!("passkey login/finish: failed to persist counter update: {e}");
+                        tracing::warn!(
+                            "passkey login/finish: failed to persist counter update: {e}"
+                        );
                     }
                 }
             }

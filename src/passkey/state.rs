@@ -29,8 +29,7 @@ impl AppState {
             std::env::var("WEBAUTHN_RP_ORIGIN").expect("WEBAUTHN_RP_ORIGIN env var not set");
         let rp_name = std::env::var("WEBAUTHN_RP_NAME").unwrap_or_else(|_| rp_id.clone());
 
-        let rp_origin =
-            Url::parse(&rp_origin_raw).expect("WEBAUTHN_RP_ORIGIN is not a valid URL");
+        let rp_origin = Url::parse(&rp_origin_raw).expect("WEBAUTHN_RP_ORIGIN is not a valid URL");
 
         let webauthn = WebauthnBuilder::new(&rp_id, &rp_origin)
             .expect("invalid WebAuthn RP configuration (check WEBAUTHN_RP_ID / WEBAUTHN_RP_ORIGIN)")

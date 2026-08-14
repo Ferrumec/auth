@@ -1,22 +1,24 @@
 //! HTTP handlers.
 
-use actix_web::cookie::{Cookie, SameSite};
-use actix_web::{HttpResponse, Responder, web};
-use actixutils::{Jwt as Auth, Identity};
-use uuid::Uuid;
-
 use crate::domain::auth::{
     AuthService,
+    models::{AuthResult, LogoutCmd, RefreshCmd},
+};
+use crate::domain::user::{
+    UserService,
     errors::AuthError,
     models::{
-        AuthResult, ChangePasswordCmd, ConfirmPasswordResetCmd, LogoutCmd, PasswordLoginCmd,
-        RefreshCmd, RequestPasswordResetCmd,
+        ChangePasswordCmd, ConfirmPasswordResetCmd, PasswordLoginCmd, RequestPasswordResetCmd,
     },
 };
 use crate::models::{
     ApiResponse, ChangePasswordRequest, LoginRequest, LoginResponse, LogoutRequest,
     PasswordResetConfirmRequest, PasswordResetRequest, RefreshRequest, RegisterRequest,
 };
+use actix_web::cookie::{Cookie, SameSite};
+use actix_web::{HttpResponse, Responder, web};
+use actixutils::{Identity, Jwt as Auth};
+use uuid::Uuid;
 
 // ── Error → HTTP ──────────────────────────────────────────────────────────────
 
@@ -64,7 +66,7 @@ pub fn access_cookie(token: &str) -> Cookie<'static> {
 }
 
 pub async fn register(
-    svc: web::Data<AuthService>,
+    svc: web::Data<UserService>,
     req: web::Json<RegisterRequest>,
 ) -> impl Responder {
     match svc.register(&req.username, &req.password).await {
@@ -75,25 +77,33 @@ pub async fn register(
     }
 }
 
-pub async fn login(svc: web::Data<AuthService>, req: web::Json<LoginRequest>) -> impl Responder {
+pub async fn login(
+    svc: web::Data<UserService>,
+    jwt: web::Data<AuthService>,
+    req: web::Json<LoginRequest>,
+) -> impl Responder {
     let cmd = PasswordLoginCmd {
         username: req.identifier.clone(),
         password: req.password.clone(),
     };
     match svc.password_login(cmd).await {
-        Ok(result) => {
-            let cookie = access_cookie(&result.access_token);
-            HttpResponse::Ok().cookie(cookie).json(ApiResponse::success(
-                auth_result_to_login_response(result),
-                "Login successful",
-            ))
-        }
+        Ok(user) => match jwt.issue_token_pair(user.id, "password").await {
+            Ok(result) => {
+                let cookie = access_cookie(&result.access_token);
+                HttpResponse::Ok().cookie(cookie).json(ApiResponse::success(
+                    auth_result_to_login_response(result),
+                    "Login successful",
+                ))
+            }
+            Err(e) => auth_error_to_response(e),
+        },
         Err(e) => auth_error_to_response(e),
     }
 }
 
 pub async fn username_login(
-    svc: web::Data<AuthService>,
+    svc: web::Data<UserService>,
+    jwt: web::Data<AuthService>,
     req: web::Json<LoginRequest>,
 ) -> impl Responder {
     let cmd = PasswordLoginCmd {
@@ -101,13 +111,16 @@ pub async fn username_login(
         password: req.password.clone(),
     };
     match svc.username_login(cmd).await {
-        Ok(result) => {
-            let cookie = access_cookie(&result.access_token);
-            HttpResponse::Ok().cookie(cookie).json(ApiResponse::success(
-                auth_result_to_login_response(result),
-                "Login successful",
-            ))
-        }
+        Ok(user) => match jwt.issue_token_pair(user.id, "password").await {
+            Ok(result) => {
+                let cookie = access_cookie(&result.access_token);
+                HttpResponse::Ok().cookie(cookie).json(ApiResponse::success(
+                    auth_result_to_login_response(result),
+                    "Login successful",
+                ))
+            }
+            Err(e) => auth_error_to_response(e),
+        },
         Err(e) => auth_error_to_response(e),
     }
 }
@@ -142,7 +155,7 @@ pub async fn logout(svc: web::Data<AuthService>, req: web::Json<LogoutRequest>) 
 }
 
 pub async fn change_password(
-    svc: web::Data<AuthService>,
+    svc: web::Data<UserService>,
     // The user_id comes from a validated JWT via your existing middleware.
     user_id: web::Path<Uuid>,
     req: web::Json<ChangePasswordRequest>,
@@ -162,7 +175,7 @@ pub async fn change_password(
 }
 
 pub async fn request_password_reset(
-    svc: web::Data<AuthService>,
+    svc: web::Data<UserService>,
     req: web::Json<PasswordResetRequest>,
 ) -> impl Responder {
     // Always return 200 regardless of whether the email was found.
@@ -177,7 +190,7 @@ pub async fn request_password_reset(
 }
 
 pub async fn confirm_password_reset(
-    svc: web::Data<AuthService>,
+    svc: web::Data<UserService>,
     req: web::Json<PasswordResetConfirmRequest>,
 ) -> impl Responder {
     let cmd = ConfirmPasswordResetCmd {

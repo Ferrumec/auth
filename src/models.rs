@@ -13,7 +13,6 @@ pub struct LoginRequest {
     pub password: String,
 }
 
-
 #[derive(Debug, Deserialize)]
 pub struct RefreshRequest {
     pub refresh_token: String,

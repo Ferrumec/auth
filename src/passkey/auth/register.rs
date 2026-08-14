@@ -3,7 +3,7 @@ use crate::{
     passkey::{error::ErrorResponse, models::LabelQuery, repository},
 };
 use actix_web::{HttpResponse, web};
-use actixutils::{Jwt as Auth, Identity};
+use actixutils::{Identity, Jwt as Auth};
 use uuid::Uuid;
 use webauthn_rs::prelude::RegisterPublicKeyCredential;
 

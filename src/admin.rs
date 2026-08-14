@@ -1,10 +1,9 @@
 use actixutils::viewset::*;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow,PgPool, Postgres, Transaction};
+use sqlx::{FromRow, PgPool, Postgres, Transaction};
 use std::sync::Arc;
 use uuid::Uuid;
-
 
 #[derive(Entity, FromRow, Serialize, Clone)]
 #[entity(
@@ -15,7 +14,7 @@ use uuid::Uuid;
 )]
 pub struct User {
     #[entity(pk)]
-    id: Uuid,
+    pub id: Uuid,
     #[entity(searchable, sortable, filterable)]
     username: String,
     #[entity(sortable, filterable)]
@@ -60,24 +59,23 @@ impl From<User> for UserDto {
     }
 }
 
-
-type UserRepository = DefaultRepo<User>;
+pub type UserRepository = DefaultRepo<User>;
 
 pub struct UserService {
     repo: UserRepository,
 }
 
-impl UserService{
-    fn new(db:PgPool)->Self{
-        let repo:UserRepository= db.into();
-        Self{repo}
+impl UserService {
+    fn new(db: PgPool) -> Self {
+        let repo: UserRepository = db.into();
+        Self { repo }
     }
 }
 
 #[async_trait::async_trait]
 impl Service for UserService {
     type Repository = UserRepository;
-    
+
     fn repository(&self) -> &Self::Repository {
         &self.repo
     }
@@ -85,17 +83,18 @@ impl Service for UserService {
     // Only override the one hook we actually need.
     async fn before_create(
         &self,
-         _tx: &mut Transaction<'_, Postgres>,
+        _tx: &mut Transaction<'_, Postgres>,
         _dto: CreateUser,
     ) -> Result<CreateUser, ApiError> {
-        return Err(ApiError::Validation("manual create not allowed, use registration endpoint".into()));
+        return Err(ApiError::Validation(
+            "manual create not allowed, use registration endpoint".into(),
+        ));
     }
 }
 
-
 pub type UserViewSet = DefaultViewSet<UserService>;
 
-pub fn create_viewset(db:PgPool)->Arc<UserViewSet>{
+pub fn create_viewset(db: PgPool) -> Arc<UserViewSet> {
     let service = UserService::new(db);
-   Arc::new (service.into())
+    Arc::new(service.into())
 }

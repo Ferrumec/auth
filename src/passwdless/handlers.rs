@@ -3,9 +3,9 @@ use actix_web::{
     web::{self, ServiceConfig},
 };
 use actixutils::middleware::Context;
-use typed_eventbus::Event;
 use serde::Deserialize;
 use std::fmt::Display;
+use typed_eventbus::Event;
 
 use crate::{auth2::AppState, models::LoginResponse, passwdless::PasswdlessError};
 
@@ -49,7 +49,11 @@ struct Email {
 }
 
 #[get("/challenge/email")]
-async fn challenge1(data: web::Data<AppState>, email: web::Json<Email>,context: web::ReqData<Context>,) -> impl Responder {
+async fn challenge1(
+    data: web::Data<AppState>,
+    email: web::Json<Email>,
+    context: web::ReqData<Context>,
+) -> impl Responder {
     match data
         .passwdless_service
         .challenge_by_email(&email.email)
@@ -62,7 +66,11 @@ async fn challenge1(data: web::Data<AppState>, email: web::Json<Email>,context: 
 }
 
 #[get("/challenge/username/{username}")]
-async fn challenge2(data: web::Data<AppState>, username: web::Path<String>,context: web::ReqData<Context>,) -> impl Responder {
+async fn challenge2(
+    data: web::Data<AppState>,
+    username: web::Path<String>,
+    context: web::ReqData<Context>,
+) -> impl Responder {
     match data
         .passwdless_service
         .challenge_by_username(&username.into_inner())

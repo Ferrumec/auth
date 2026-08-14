@@ -1,9 +1,9 @@
-use crate::{auth2::random_token, domain::auth::AuthService};
-use typed_eventbus::{ Publishable};
+use crate::{auth2::random_token, domain::user::UserService as AuthService};
 use moka::future::Cache;
 use rand::random;
 use serde::Serialize;
 use std::time::Duration;
+use typed_eventbus::Publishable;
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
@@ -97,7 +97,10 @@ impl PasswdlessService {
         Ok(fa2.email)
     }
 
-    pub async fn challenge_by_email(&self, email: &String) -> Result<ChallengeRequested, PasswdlessError> {
+    pub async fn challenge_by_email(
+        &self,
+        email: &String,
+    ) -> Result<ChallengeRequested, PasswdlessError> {
         let user = match self.auth_service.get_user_by_email(email).await {
             Ok(r) => r,
             Err(_) => return Err(PasswdlessError::UserNotFound),
@@ -105,10 +108,13 @@ impl PasswdlessService {
 
         let (token, link) = release_pair(user.id, &self.caches).await;
         let payload = ChallengeRequested { token, link };
-        
+
         Ok(payload)
     }
-    pub async fn challenge_by_username(&self, email: &String) -> Result<ChallengeRequested, PasswdlessError> {
+    pub async fn challenge_by_username(
+        &self,
+        email: &String,
+    ) -> Result<ChallengeRequested, PasswdlessError> {
         let user = match self.auth_service.get_user_by_username(email).await {
             Ok(r) => r,
             Err(_) => return Err(PasswdlessError::UserNotFound),
@@ -116,13 +122,13 @@ impl PasswdlessService {
 
         let (token, link) = release_pair(user.id, &self.caches).await;
         let payload = ChallengeRequested { token, link };
-        
+
         Ok(payload)
     }
 }
 
 #[derive(Serialize)]
-pub (crate) struct ChallengeRequested {
+pub(crate) struct ChallengeRequested {
     token: u32,
     link: String,
 }

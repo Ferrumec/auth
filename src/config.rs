@@ -1,14 +1,14 @@
-use crate::{auth2::AppState, handlers, passwdless::config, user_id::username2userid};
 #[cfg(feature = "passkey")]
 use crate::passkey;
+use crate::{auth2::AppState, handlers, passwdless::config, user_id::username2userid};
 use actix_web::web::{self, Data, ServiceConfig};
 use actixutils::{Identity, Sign, Validate};
-use typed_eventbus::EventStream;
 use sqlx::{Error, Pool, Postgres};
 use std::{env::VarError, sync::Arc};
+use typed_eventbus::EventStream;
 
-use actixutils::viewset::ViewSet;
 use crate::admin::create_viewset;
+use actixutils::viewset::ViewSet;
 
 #[derive(Clone)]
 pub struct AuthModule {
@@ -61,40 +61,43 @@ impl AuthModule {
         }
     }
     pub fn config(&self, cfg: &mut ServiceConfig, namespace: &str) {
-        let scope = web::scope(namespace)
-            // `username2userid` and the `/passwordless` handlers extract
-            // `web::Data<AppState>` directly, so the shared state needs to
-            // be registered here too, not just the `AuthService` slice of it.
-            .app_data(self.state.clone())
-            .app_data(Data::new(self.state.auth_service.clone()))
-            .service(username2userid)
-        .service(web::scope("/admin").configure(|cfg|create_viewset(self.state.pool.clone()).configure(cfg,"product")))
-            .service(
-                web::scope("/auth")
-                    .route("/register", web::post().to(handlers::register))
-                    .route("/login/email", web::post().to(handlers::login))
-                    .route("/login/username", web::post().to(handlers::username_login))
-                    .route("/refresh", web::post().to(handlers::refresh))
-                    .route("/logout", web::post().to(handlers::logout))
-                    .route(
-                        "/request_password_reset",
-                        web::post().to(handlers::request_password_reset),
-                    )
-                    .route(
-                        "/confirm_password_reset",
-                        web::post().to(handlers::confirm_password_reset),
-                    ),
-            )
-            // 🔐 PROTECTED ROUTES
-            .service(
-                web::scope("/me")
-                    .route("/account", web::get().to(handlers::protected))
-                    .route(
-                        "/change_password",
-                        web::post().to(handlers::change_password),
-                    ),
-            )
-            .service(web::scope("/passwordless").configure(config));
+        let scope =
+            web::scope(namespace)
+                // `username2userid` and the `/passwordless` handlers extract
+                // `web::Data<AppState>` directly, so the shared state needs to
+                // be registered here too, not just the `AuthService` slice of it.
+                .app_data(self.state.clone())
+                .app_data(Data::new(self.state.auth_service.clone()))
+                .service(username2userid)
+                .service(web::scope("/admin").configure(|cfg| {
+                    create_viewset(self.state.pool.clone()).configure(cfg, "product")
+                }))
+                .service(
+                    web::scope("/auth")
+                        .route("/register", web::post().to(handlers::register))
+                        .route("/login/email", web::post().to(handlers::login))
+                        .route("/login/username", web::post().to(handlers::username_login))
+                        .route("/refresh", web::post().to(handlers::refresh))
+                        .route("/logout", web::post().to(handlers::logout))
+                        .route(
+                            "/request_password_reset",
+                            web::post().to(handlers::request_password_reset),
+                        )
+                        .route(
+                            "/confirm_password_reset",
+                            web::post().to(handlers::confirm_password_reset),
+                        ),
+                )
+                // 🔐 PROTECTED ROUTES
+                .service(
+                    web::scope("/me")
+                        .route("/account", web::get().to(handlers::protected))
+                        .route(
+                            "/change_password",
+                            web::post().to(handlers::change_password),
+                        ),
+                )
+                .service(web::scope("/passwordless").configure(config));
 
         #[cfg(feature = "passkey")]
         {
