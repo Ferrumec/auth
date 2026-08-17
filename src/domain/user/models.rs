@@ -54,7 +54,7 @@ pub struct PasswordReset {
 }
 
 /// A row from the `users` table.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ActiveUser {
     pub id: Uuid,
     pub username: String,

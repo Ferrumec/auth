@@ -16,7 +16,7 @@ use crate::models::{
 };
 use actix_web::cookie::{Cookie, SameSite};
 use actix_web::{HttpRequest, HttpResponse, Responder, web};
-use actixutils::{Identity, Jwt as Auth};
+use actixutils::{Identity, Jwt as Auth, Session};
 use uuid::Uuid;
 
 // ── Error → HTTP ──────────────────────────────────────────────────────────────
@@ -201,10 +201,10 @@ pub async fn logout(
 
 pub async fn change_password(
     svc: web::Data<UserService>,
-    Auth(user): Auth<Identity>,
+    user_session: Session<Identity>,
     req: web::Json<ChangePasswordRequest>,
 ) -> impl Responder {
-    let user_id = user.sub;
+    let user_id = user_session.read().await.sub;
     let cmd = ChangePasswordCmd {
         user_id,
         current_password: req.current_password.clone(),

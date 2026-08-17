@@ -1,13 +1,16 @@
+use crate::admin::create_viewset;
+use crate::domain::user::ActiveUser;
 #[cfg(feature = "passkey")]
 use crate::passkey;
 use crate::{auth2::AppState, handlers, passwdless::config, user_id::username2userid};
 use actix_web::web::{self, Data, ServiceConfig};
+use actixutils::Store;
+use actixutils::middleware::SessionMiddleware;
 use actixutils::{Identity, Sign, Validate};
 use sqlx::{Error, Pool, Postgres};
 use std::{env::VarError, sync::Arc};
 use typed_eventbus::EventStream;
-
-use crate::admin::create_viewset;
+use uuid::Uuid;
 use viewset::ViewSet;
 
 #[derive(Clone)]
@@ -54,13 +57,16 @@ impl AuthModule {
         signer: Arc<dyn Sign<Identity>>,
         validator: Arc<dyn Validate<Identity>>,
         es: Arc<dyn EventStream>,
+        session_store: Arc<dyn Store<Uuid, ActiveUser>>,
     ) -> Self {
-        let app_state = AppState::new(pool.clone(), signer, validator, es).await;
+        let app_state = AppState::new(pool.clone(), signer, validator, es, session_store).await;
         Self {
             state: web::Data::new(app_state),
         }
     }
     pub fn config(&self, cfg: &mut ServiceConfig, namespace: &str) {
+        let session_middleware: SessionMiddleware<ActiveUser> =
+            SessionMiddleware::required(self.state.session_store.clone());
         let scope =
             web::scope(namespace)
                 // `username2userid` and the `/passwordless` handlers extract
@@ -70,7 +76,7 @@ impl AuthModule {
                 .app_data(Data::new(self.state.auth_service.clone()))
                 .service(username2userid)
                 .service(web::scope("/admin").configure(|cfg| {
-                    create_viewset(self.state.pool.clone()).configure(cfg, "product")
+                    create_viewset(self.state.pool.clone()).configure(cfg, "users")
                 }))
                 .service(
                     web::scope("/auth")
@@ -91,6 +97,7 @@ impl AuthModule {
                 // 🔐 PROTECTED ROUTES
                 .service(
                     web::scope("/me")
+                        .wrap(session_middleware)
                         .route("/account", web::get().to(handlers::protected))
                         .route(
                             "/change_password",

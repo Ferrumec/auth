@@ -1,8 +1,10 @@
+use crate::domain::SessionService;
 use crate::domain::auth::service::AuthService;
+use crate::domain::user::ActiveUser;
 use crate::domain::user::{UserService, token::generate_raw_token};
 use crate::passwdless::PasswdlessService;
 use actixutils::{Identity, Provider};
-use actixutils::{Sign, Validate};
+use actixutils::{Sign, Store, Validate};
 use serde::Deserialize;
 use sqlx::{Pool, Postgres, query};
 use std::sync::Arc;
@@ -14,6 +16,8 @@ pub struct AppState {
     pub validator: Arc<dyn Validate<Identity>>,
     pub passwdless_service: PasswdlessService,
     pub auth_service: AuthService,
+    pub session_service: SessionService,
+    pub session_store: Arc<dyn Store<Uuid, ActiveUser>>,
     /// WebAuthn config + in-flight ceremony state for the passkey module.
     /// Built from `WEBAUTHN_RP_ID` / `WEBAUTHN_RP_ORIGIN` (see
     /// `passkey::state::AppState::from_env`).
@@ -27,9 +31,11 @@ impl AppState {
         signer: Arc<dyn Sign<Identity>>,
         validator: Arc<dyn Validate<Identity>>,
         es: Arc<dyn EventStream>,
+        session_store: Arc<dyn Store<Uuid, ActiveUser>>,
     ) -> Self {
         let auth_service = AuthService::new(pool.clone(), signer.clone());
         let user_service = UserService::new(pool.clone(), es.clone());
+        let session_service = SessionService::new(session_store.clone());
         let passwdless_service = PasswdlessService::new(user_service.clone());
         subscribe(es.clone(), pool.clone()).await;
         Self {
@@ -37,6 +43,8 @@ impl AppState {
             validator,
             passwdless_service,
             auth_service,
+            session_service,
+            session_store,
             #[cfg(feature = "passkey")]
             passkey: crate::passkey::state::AppState::from_env(),
         }
