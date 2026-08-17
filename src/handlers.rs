@@ -15,7 +15,7 @@ use crate::models::{
     PasswordResetConfirmRequest, PasswordResetRequest, RefreshRequest, RegisterRequest,
 };
 use actix_web::cookie::{Cookie, SameSite};
-use actix_web::{HttpResponse, Responder, web};
+use actix_web::{HttpRequest, HttpResponse, Responder, web};
 use actixutils::{Identity, Jwt as Auth};
 use uuid::Uuid;
 
@@ -127,7 +127,7 @@ pub async fn username_login(
     svc: web::Data<UserService>,
     jwt: web::Data<AuthService>,
     req: web::Json<LoginRequest>,
-sess: web::Data<SessionService>,
+    sess: web::Data<SessionService>,
 ) -> impl Responder {
     let cmd = PasswordLoginCmd {
         username: req.identifier.clone(),
@@ -177,14 +177,26 @@ pub async fn refresh(
     }
 }
 
-pub async fn logout(svc: web::Data<AuthService>, req: web::Json<LogoutRequest>) -> impl Responder {
+pub async fn logout(
+    svc: web::Data<AuthService>,
+    sess: web::Data<SessionService>,
+    payload: web::Json<LogoutRequest>,
+    req: HttpRequest,
+) -> impl Responder {
     let cmd = LogoutCmd {
-        refresh_token: req.refresh_token.clone(),
+        refresh_token: payload.refresh_token.clone(),
     };
-    match svc.logout(cmd).await {
-        Ok(()) => HttpResponse::Ok().json(ApiResponse::success((), "Logged out successfully")),
-        Err(e) => auth_error_to_response(e),
+    if let Err(e) = svc.logout(cmd).await {
+        return auth_error_to_response(e);
     }
+
+    if let Some(sess_id) = req.cookie("session") {
+        if let Err(e) = sess.logout(sess_id.value()).await {
+            return auth_error_to_response(e);
+        }
+    }
+
+    HttpResponse::Ok().json(ApiResponse::success((), "Logged out successfully"))
 }
 
 pub async fn change_password(

@@ -44,8 +44,6 @@ pub struct User {
     pub updated_at: DateTime<Utc>,
 }
 
-
-
 /// A row from the `password_resets` table.
 #[derive(sqlx::FromRow)]
 pub struct PasswordReset {
@@ -62,11 +60,11 @@ pub struct ActiveUser {
     pub username: String,
 }
 
-impl From<User> for ActiveUser{
-    fn from(user: User)->Self{
-        Self{
-            id:user.id,
-            username:user.username
+impl From<User> for ActiveUser {
+    fn from(user: User) -> Self {
+        Self {
+            id: user.id,
+            username: user.username,
         }
     }
 }

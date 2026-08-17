@@ -23,7 +23,6 @@ pub struct User {
     created_at: chrono::DateTime<chrono::Utc>,
 }
 
-
 #[derive(Serialize, Deserialize)]
 pub struct CreateUser {
     name: String,

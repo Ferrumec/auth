@@ -8,8 +8,8 @@ use crate::domain::user::token::{generate_raw_token, hash_token};
 use crate::domain::user::{
     errors::AuthError,
     models::{
-        ChangePasswordCmd, ConfirmPasswordResetCmd, PasswordLoginCmd, PasswordReset,
-        RequestPasswordResetCmd, ActiveUser,User
+        ActiveUser, ChangePasswordCmd, ConfirmPasswordResetCmd, PasswordLoginCmd, PasswordReset,
+        RequestPasswordResetCmd, User,
     },
 };
 use chrono::Utc;

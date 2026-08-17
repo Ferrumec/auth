@@ -12,7 +12,7 @@
 //! Sessions use sliding expiration: every successful `validate` call
 //! extends the TTL.
 
-use crate::domain::user::{errors::AuthError, ActiveUser as User};
+use crate::domain::user::{ActiveUser as User, errors::AuthError};
 use actixutils::locals::Store;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -37,8 +37,15 @@ impl SessionService {
     // ── Logout ────────────────────────────────────────────────────────────────
 
     /// Destroy a single session. Idempotent — logging out twice is fine.
-    pub async fn logout(&self, session_id: &Uuid) -> Result<(), AuthError> {
-        if let Err(e) = self.store.delete(session_id).await {
+    pub async fn logout(&self, session_id: &str) -> Result<(), AuthError> {
+        let session_id = match Uuid::parse_str(session_id) {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::error!("Error in parsing session uuid: {e}");
+                return Err(AuthError::InvalidToken);
+            }
+        };
+        if let Err(e) = self.store.delete(&session_id).await {
             tracing::error!("failed to delete session: {e}");
             return Err(AuthError::Cache);
         }
