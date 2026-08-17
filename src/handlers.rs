@@ -127,24 +127,35 @@ pub async fn username_login(
     svc: web::Data<UserService>,
     jwt: web::Data<AuthService>,
     req: web::Json<LoginRequest>,
+sess: web::Data<SessionService>,
 ) -> impl Responder {
     let cmd = PasswordLoginCmd {
         username: req.identifier.clone(),
         password: req.password.clone(),
     };
-    match svc.username_login(cmd).await {
-        Ok(user) => match jwt.issue_token_pair(user.id, "password").await {
-            Ok(result) => {
-                let cookie = access_cookie(&result.access_token);
-                HttpResponse::Ok().cookie(cookie).json(ApiResponse::success(
-                    auth_result_to_login_response(result),
-                    "Login successful",
-                ))
-            }
-            Err(e) => auth_error_to_response(e),
-        },
-        Err(e) => auth_error_to_response(e),
-    }
+
+    let user = match svc.username_login(cmd).await {
+        Ok(user) => user,
+        Err(e) => return auth_error_to_response(e),
+    };
+
+    let result = match jwt.issue_token_pair(user.id, "password").await {
+        Ok(result) => result,
+        Err(e) => return auth_error_to_response(e),
+    };
+
+    let sess_id = match sess.issue_session(user).await {
+        Ok(sess_id) => sess_id,
+        Err(e) => return auth_error_to_response(e),
+    };
+
+    HttpResponse::Ok()
+        .cookie(access_cookie(&result.access_token))
+        .cookie(session_cookie(&sess_id))
+        .json(ApiResponse::success(
+            auth_result_to_login_response(result),
+            "Login successful",
+        ))
 }
 
 pub async fn refresh(
