@@ -9,7 +9,7 @@ use crate::domain::user::{
     errors::AuthError,
     models::{
         ChangePasswordCmd, ConfirmPasswordResetCmd, PasswordLoginCmd, PasswordReset,
-        RequestPasswordResetCmd, User,
+        RequestPasswordResetCmd, ActiveUser,User
     },
 };
 use chrono::Utc;
@@ -54,7 +54,7 @@ impl UserService {
     // ── Password login ────────────────────────────────────────────────────────
 
     /// Validate credentials and issue a token pair.
-    pub async fn password_login(&self, cmd: PasswordLoginCmd) -> Result<User, AuthError> {
+    pub async fn password_login(&self, cmd: PasswordLoginCmd) -> Result<ActiveUser, AuthError> {
         if cmd.username.is_empty() || cmd.password.is_empty() {
             return Err(AuthError::MissingCredentials);
         }
@@ -66,10 +66,10 @@ impl UserService {
             Ok(false) => return Err(AuthError::InvalidCredentials),
             Err(e) => return Err(AuthError::Bcrypt(e)),
         }
-        Ok(user)
+        Ok(user.into())
     }
 
-    pub async fn username_login(&self, cmd: PasswordLoginCmd) -> Result<User, AuthError> {
+    pub async fn username_login(&self, cmd: PasswordLoginCmd) -> Result<ActiveUser, AuthError> {
         if cmd.username.is_empty() || cmd.password.is_empty() {
             return Err(AuthError::MissingCredentials);
         }
@@ -81,7 +81,7 @@ impl UserService {
             Ok(false) => return Err(AuthError::InvalidCredentials),
             Err(e) => return Err(AuthError::Bcrypt(e)),
         }
-        Ok(user)
+        Ok(user.into())
     }
 
     // ── Registration ──────────────────────────────────────────────────────────

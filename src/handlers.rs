@@ -1,3 +1,4 @@
+use crate::domain::SessionService;
 use crate::domain::auth::{
     AuthService,
     models::{AuthResult, LogoutCmd, RefreshCmd},
@@ -16,6 +17,7 @@ use crate::models::{
 use actix_web::cookie::{Cookie, SameSite};
 use actix_web::{HttpResponse, Responder, web};
 use actixutils::{Identity, Jwt as Auth};
+use uuid::Uuid;
 
 // ── Error → HTTP ──────────────────────────────────────────────────────────────
 
@@ -36,7 +38,10 @@ fn auth_error_to_response(e: AuthError) -> HttpResponse {
         AuthError::UserAlreadyExists => {
             HttpResponse::Conflict().json(ApiResponse::<()>::error(&e.to_string()))
         }
-        AuthError::Database(_) | AuthError::Bcrypt(_) | AuthError::TokenSigning(_) => {
+        AuthError::Database(_)
+        | AuthError::Bcrypt(_)
+        | AuthError::TokenSigning(_)
+        | AuthError::Cache => {
             tracing::error!("Internal auth error: {:?}", e);
             HttpResponse::InternalServerError().finish()
         }
@@ -62,6 +67,15 @@ pub fn access_cookie(token: &str) -> Cookie<'static> {
         .finish()
 }
 
+pub fn session_cookie(session: &Uuid) -> Cookie<'static> {
+    Cookie::build("session", session.to_string())
+        .path("/")
+        .http_only(true)
+        .secure(true)
+        .same_site(SameSite::Strict)
+        .finish()
+}
+
 pub async fn register(
     svc: web::Data<UserService>,
     req: web::Json<RegisterRequest>,
@@ -77,25 +91,36 @@ pub async fn register(
 pub async fn login(
     svc: web::Data<UserService>,
     jwt: web::Data<AuthService>,
+    sess: web::Data<SessionService>,
     req: web::Json<LoginRequest>,
 ) -> impl Responder {
     let cmd = PasswordLoginCmd {
         username: req.identifier.clone(),
         password: req.password.clone(),
     };
-    match svc.password_login(cmd).await {
-        Ok(user) => match jwt.issue_token_pair(user.id, "password").await {
-            Ok(result) => {
-                let cookie = access_cookie(&result.access_token);
-                HttpResponse::Ok().cookie(cookie).json(ApiResponse::success(
-                    auth_result_to_login_response(result),
-                    "Login successful",
-                ))
-            }
-            Err(e) => auth_error_to_response(e),
-        },
-        Err(e) => auth_error_to_response(e),
-    }
+
+    let user = match svc.password_login(cmd).await {
+        Ok(user) => user,
+        Err(e) => return auth_error_to_response(e),
+    };
+
+    let result = match jwt.issue_token_pair(user.id, "password").await {
+        Ok(result) => result,
+        Err(e) => return auth_error_to_response(e),
+    };
+
+    let sess_id = match sess.issue_session(user).await {
+        Ok(sess_id) => sess_id,
+        Err(e) => return auth_error_to_response(e),
+    };
+
+    HttpResponse::Ok()
+        .cookie(access_cookie(&result.access_token))
+        .cookie(session_cookie(&sess_id))
+        .json(ApiResponse::success(
+            auth_result_to_login_response(result),
+            "Login successful",
+        ))
 }
 
 pub async fn username_login(

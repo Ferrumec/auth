@@ -4,3 +4,4 @@ pub mod service;
 pub mod token;
 
 pub use service::UserService;
+pub use models::ActiveUser;

@@ -44,4 +44,7 @@ pub enum AuthError {
 
     #[error("Token signing failed: {0}")]
     TokenSigning(String),
+
+    #[error("Cache failed")]
+    Cache,
 }

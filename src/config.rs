@@ -8,7 +8,7 @@ use std::{env::VarError, sync::Arc};
 use typed_eventbus::EventStream;
 
 use crate::admin::create_viewset;
-use actixutils::viewset::ViewSet;
+use viewset::ViewSet;
 
 #[derive(Clone)]
 pub struct AuthModule {

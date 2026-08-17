@@ -1,9 +1,9 @@
-use actixutils::viewset::*;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, PgPool, Postgres, Transaction};
 use std::sync::Arc;
 use uuid::Uuid;
+use viewset::{ApiError, DefaultRepo, DefaultViewSet, Entity, Service};
 
 #[derive(Entity, FromRow, Serialize, Clone)]
 #[entity(
@@ -22,6 +22,7 @@ pub struct User {
     #[entity(sortable)]
     created_at: chrono::DateTime<chrono::Utc>,
 }
+
 
 #[derive(Serialize, Deserialize)]
 pub struct CreateUser {

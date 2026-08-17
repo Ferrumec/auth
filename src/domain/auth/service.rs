@@ -10,12 +10,12 @@ use crate::domain::user::{
     errors::AuthError,
     token::{generate_raw_token, hash_token},
 };
-use actixutils::viewset::Repository;
 use actixutils::{Identity, Sign};
 use chrono::Utc;
 use sqlx::{Pool, Postgres};
 use std::sync::Arc;
 use uuid::Uuid;
+use viewset::Repository;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
