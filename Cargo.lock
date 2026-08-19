@@ -187,7 +187,9 @@ dependencies = [
 
 [[package]]
 name = "actixutils"
-version = "0.6.1"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9f229007634e01934d4a0fd52590f093408700d143c77f28e92946a057abcf2"
 dependencies = [
  "actix-web",
  "anyhow",
@@ -204,28 +206,6 @@ dependencies = [
  "tokio",
  "tracing",
  "typed-eventbus",
- "uuid",
-]
-
-[[package]]
-name = "actixutils"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47a1c8ffcea74ecac565b71d9bb8d33231a0f87584f90943ea25b88ba3262efd"
-dependencies = [
- "actix-web",
- "anyhow",
- "async-trait",
- "bytes",
- "chrono",
- "futures",
- "futures-util",
- "rand 0.10.2",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "tokio",
- "tracing",
  "uuid",
 ]
 
@@ -414,7 +394,7 @@ name = "auth"
 version = "0.1.0"
 dependencies = [
  "actix-web",
- "actixutils 0.6.1",
+ "actixutils",
  "anyhow",
  "async-trait",
  "base64 0.22.1",
@@ -3484,12 +3464,12 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "viewset"
-version = "0.1.4"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "76f975f83a350c52a5ee3ce98de47e4cc312010a40b6ea7063f95c91cae0f434"
+checksum = "b547d487c9d731cf57128f69d939fe97bd2b6fc231158730b4dc9ad531ba7c98"
 dependencies = [
  "actix-web",
- "actixutils 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "actixutils",
  "async-trait",
  "chrono",
  "moka",

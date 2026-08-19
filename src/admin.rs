@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, PgPool, Postgres, Transaction};
 use std::sync::Arc;
 use uuid::Uuid;
-use viewset::{ApiError, DefaultRepo, DefaultViewSet, Entity, Service};
+use actixutils::Store;
+use viewset::{ApiError, DefaultRepo, DefaultViewSet, Entity, Service, Repository};
 
 #[derive(Entity, FromRow, Serialize, Clone)]
 #[entity(
@@ -56,6 +57,30 @@ impl From<User> for UserDto {
             username: p.username,
             email: p.email,
         }
+    }
+}
+
+#[derive(Entity, FromRow, Serialize, Clone, Deserialize)]
+pub struct Session{
+    #[entity(pk)]
+    id: Uuid,
+    #[entity(sortable)]
+    created_at: chrono::DateTime<chrono::Utc>,
+}
+
+pub struct SessionRepo{
+    pool: PgPool,
+    cache: Arc<dyn Store<Uuid,Session>>
+}
+
+impl Repository for SessionRepo{
+    type Entity = Session;
+    fn database(&self)->&PgPool{
+        &self.pool
+    }
+    
+    fn cache(&self)->Arc<dyn Store<Uuid,Session> + Send + Sync>{
+        self.cache.clone()
     }
 }
 
